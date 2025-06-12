@@ -136,9 +136,9 @@ const GENERATION_TYPES = {
     description: 'Business / brand logos',
     defaultModel: MODELS.STABLE_DIFFUSION_XL,
     defaultResolution: 'LOGO',
-    promptPrefix: 'minimalist logo design for ',
-    promptSuffix: ', professional, corporate, vector style, clean lines, branding, isolated on white background',
-    negativePrompt: 'text, words, letters, busy, complex, detailed background, noisy, grainy, blurry, painting, drawing'
+    promptPrefix: 'high quality, professional logo design for a brand named "',
+    promptSuffix: '", vector style, clean lines, minimalist, modern branding, isolated on white background, sharp details, perfect for business card and website, no text elements, emblematic design only',
+    negativePrompt: "text, letters, words, fonts, typography, wordmark, busy, complex, detailed background, noisy, grainy, blurry, distorted, low resolution, pixelated, jpeg artifacts, watermark, signature"
   },
   POSTER: {
     name: 'AI Poster Creator',

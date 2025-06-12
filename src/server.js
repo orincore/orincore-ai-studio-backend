@@ -16,6 +16,7 @@ const webhookRoutes = require('./routes/webhookRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const thumbnailRoutes = require('./routes/thumbnailRoutes');
 const posterRoutes = require('./routes/posterRoutes');
+const logoRoutes = require('./routes/logoRoutes');
 
 // Initialize express app
 const app = express();
@@ -58,6 +59,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/posters', posterRoutes);
+app.use('/api/logos', logoRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -85,7 +87,10 @@ app.listen(PORT, () => {
   - POST /api/images/generate - Generate images with enhanced accuracy
   - POST /api/images/analyze-prompt - Get prompt improvement suggestions
   - POST /api/images/suggest-styles - Get style suggestions for prompts
-  - GET /api/images/options - Get all available models, resolutions and styles`);
+  - GET /api/images/options - Get all available models, resolutions and styles
+  - POST /api/logos/generate - Generate logos with enhanced text handling
+  - GET /api/logos/styles - Get available logo styles
+  - GET /api/logos/color-themes - Get logo color theme suggestions`);
 });
 
 // Handle unhandled promise rejections

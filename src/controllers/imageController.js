@@ -16,6 +16,7 @@ const {
   enhancePromptForAccuracy,
   enhanceNegativePrompt
 } = require('../services/stabilityAIService');
+const logoService = require('../services/logoService');
 const { ApiError } = require('../middlewares/errorMiddleware');
 
 /**
@@ -48,6 +49,34 @@ const generateImage = asyncHandler(async (req, res) => {
     throw new ApiError(`Invalid generation type. Valid options are: ${Object.keys(GENERATION_TYPES).join(', ')}`, 400);
   }
   
+  // Special handling for logo generation - redirect to specialized logo service
+  if (generationType === 'LOGO') {
+    console.log('Redirecting to specialized logo generation service');
+    
+    // Extract logo-specific parameters
+    const { 
+      colorTheme = '',
+      industry = '',
+      description = ''
+    } = req.body;
+    
+    // Generate logo using specialized logo service
+    const result = await logoService.generateLogo({
+      name: prompt,
+      description,
+      colorTheme,
+      style: style || 'minimalist',
+      industry,
+      userId: req.user.id
+    });
+    
+    return res.status(201).json({
+      success: true,
+      data: result
+    });
+  }
+  
+  // Continue with regular image generation for non-logo types
   // Validate model ID if provided
   if (modelId) {
     const validModels = Object.values(MODELS);
