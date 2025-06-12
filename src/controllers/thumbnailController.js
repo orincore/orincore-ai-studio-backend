@@ -22,7 +22,10 @@ class ThumbnailController {
         tags,
         contentCategory,
         stylePreference,
-        colorPreferences
+        colorPreferences,
+        prompt,
+        useAI = true,
+        composition = {}
       } = req.body;
       
       // Validation
@@ -30,11 +33,21 @@ class ThumbnailController {
         throw new ApiError('Title is required', 400);
       }
       
-      // Check for user asset (image upload)
-      let userAsset = null;
-      if (req.files && req.files.userAsset) {
-        userAsset = req.files.userAsset[0];
+      // Check for user assets (multiple image uploads)
+      let userAssets = [];
+      if (req.files && req.files.userAssets) {
+        // Handle array of files
+        userAssets = Array.isArray(req.files.userAssets) 
+          ? req.files.userAssets 
+          : [req.files.userAssets];
       }
+      
+      // For backward compatibility, also check for single userAsset
+      if (req.files && req.files.userAsset && userAssets.length === 0) {
+        userAssets = [req.files.userAsset[0]];
+      }
+      
+      console.log(`Generating professional thumbnail with ${userAssets.length} user images and useAI=${useAI}`);
       
       // Generate thumbnail
       const result = await ThumbnailService.generateThumbnail(userId, {
@@ -44,7 +57,10 @@ class ThumbnailController {
         contentCategory,
         stylePreference,
         colorPreferences: Array.isArray(colorPreferences) ? colorPreferences : [],
-        userAsset
+        prompt,
+        userAssets,
+        useAI: useAI === false ? false : true,
+        composition
       });
       
       res.status(201).json(result);

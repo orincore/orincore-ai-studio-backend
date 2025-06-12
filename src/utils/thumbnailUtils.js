@@ -93,7 +93,9 @@ const STYLE_MODIFIERS = {
  * @param {string} params.contentCategory - Content category
  * @param {string} params.stylePreference - Style preference
  * @param {Array<string>} params.colorPreferences - Optional color preferences
+ * @param {string} params.customPrompt - Optional custom prompt
  * @param {boolean} params.hasUserImage - Whether user uploaded custom image
+ * @param {number} params.userImageCount - Number of user images provided
  * @return {Object} Enhanced prompt data
  */
 function generateThumbnailPrompt(params) {
@@ -104,7 +106,9 @@ function generateThumbnailPrompt(params) {
     contentCategory = 'tech',
     stylePreference = 'bold',
     colorPreferences = [],
-    hasUserImage = false
+    customPrompt = '',
+    hasUserImage = false,
+    userImageCount = 0
   } = params;
   
   // Get category style or default to tech
@@ -130,8 +134,14 @@ function generateThumbnailPrompt(params) {
     colorText = `with color scheme featuring ${colorPreferences.join(', ')}, `;
   }
   
+  // Start with custom prompt if provided
+  let prompt = customPrompt ? `${customPrompt}, ` : '';
+  
+  // Add professional quality indicators
+  prompt += 'professional high-quality YouTube thumbnail, ';
+  
   // Build the complete prompt
-  let prompt = `${categoryStyle.promptPrefix}${styleModifier}, ${colorText}featuring "${contentDescription}"`;
+  prompt += `${categoryStyle.promptPrefix}${styleModifier}, ${colorText}featuring "${contentDescription}"`;
   
   // Add tag text if available
   if (tagText) {
@@ -141,17 +151,28 @@ function generateThumbnailPrompt(params) {
   // Add suffix
   prompt += categoryStyle.promptSuffix;
   
-  // If using user image, add instruction to integrate it
+  // If using user image, add instruction to integrate it properly
   if (hasUserImage) {
-    prompt += ' Seamlessly integrate the provided image as a central element.';
+    if (userImageCount === 1) {
+      prompt += ' Integrate the provided image as a prominent featured element with professional composition.';
+    } else {
+      prompt += ` Composition designed to incorporate ${userImageCount} user-provided images with clean layout and balance.`;
+    }
   }
   
-  // Add YouTube thumbnail specifics
-  prompt += ' Optimized as a YouTube thumbnail with 1280x720px resolution, high click-through rate design.';
+  // Add quality-enhancing terms
+  prompt += ' Professional grade, captivating design, high click-through rate, attention-grabbing.';
+  
+  // Add technical specifications
+  prompt += ' Optimized as a YouTube thumbnail with 1280x720px resolution, high production value, marketable quality.';
+  
+  // Enhance negative prompt for professional results
+  let negativePrompt = categoryStyle.negativePrompt;
+  negativePrompt += ', amateur-looking, poorly designed, cluttered, confusing, hard to read, generic stock photo look, pixelated, low resolution, poor composition, unbalanced layout';
   
   return {
     prompt,
-    negativePrompt: categoryStyle.negativePrompt,
+    negativePrompt,
     textStyle: categoryStyle.textStyle,
     colorScheme: categoryStyle.colorSchemes[0]
   };
