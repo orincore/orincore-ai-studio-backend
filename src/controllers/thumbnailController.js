@@ -15,6 +15,11 @@ class ThumbnailController {
     try {
       const userId = req.user.id;
       
+      // Log the incoming request structure
+      console.log('Request body keys:', Object.keys(req.body));
+      console.log('Request files structure:', req.files ? JSON.stringify(Object.keys(req.files)) : 'no files');
+      console.log('Content-Type:', req.get('Content-Type'));
+      
       // Extract generation parameters from request body
       const {
         title,
@@ -33,24 +38,38 @@ class ThumbnailController {
         throw new ApiError('Title is required', 400);
       }
       
-      console.log('Request files:', req.files ? Object.keys(req.files).join(', ') : 'none');
-      
       // Check for user assets (multiple image uploads)
       let userAssets = [];
       
       try {
-        if (req.files && req.files.userAssets) {
-          // Handle array of files
-          userAssets = Array.isArray(req.files.userAssets) 
-            ? req.files.userAssets 
-            : [req.files.userAssets];
-        }
-        
-        // For backward compatibility, also check for single userAsset
-        if (req.files && req.files.userAsset && userAssets.length === 0) {
-          userAssets = Array.isArray(req.files.userAsset) 
-            ? req.files.userAsset 
-            : [req.files.userAsset];
+        if (req.files) {
+          console.log('File upload fields found:', Object.keys(req.files));
+          
+          if (req.files.userAssets) {
+            console.log('userAssets field found with:', 
+              Array.isArray(req.files.userAssets) ? 
+              `${req.files.userAssets.length} files` : 
+              'single file');
+            
+            // Handle array of files
+            userAssets = Array.isArray(req.files.userAssets) 
+              ? req.files.userAssets 
+              : [req.files.userAssets];
+          }
+          
+          // For backward compatibility, also check for single userAsset
+          if (req.files.userAsset && userAssets.length === 0) {
+            console.log('userAsset field found with:', 
+              Array.isArray(req.files.userAsset) ? 
+              `${req.files.userAsset.length} files` : 
+              'single file');
+              
+            userAssets = Array.isArray(req.files.userAsset) 
+              ? req.files.userAsset 
+              : [req.files.userAsset];
+          }
+        } else {
+          console.log('No files found in request');
         }
       } catch (error) {
         console.error('Error processing file uploads:', error);
@@ -58,10 +77,9 @@ class ThumbnailController {
       }
       
       console.log(`Generating professional thumbnail with ${userAssets.length} user images and useAI=${useAI}`);
-      console.log(`Available file upload fields: ${req.files ? Object.keys(req.files).join(', ') : 'none'}`);
       
       if (userAssets.length > 0) {
-        console.log(`First image details: ${userAssets[0].originalname}, ${userAssets[0].mimetype}, ${userAssets[0].size} bytes`);
+        console.log(`First image details: name=${userAssets[0].originalname}, type=${userAssets[0].mimetype}, size=${userAssets[0].size} bytes`);
       }
       
       // Generate thumbnail

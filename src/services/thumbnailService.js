@@ -100,59 +100,88 @@ class ThumbnailService {
       // 8. Generate the image using Stability AI (if AI is used)
       let generatedImage = null;
       if (useAI) {
-        // Use enhanced prompt engineering for better quality
-        const generationResult = await StabilityAIService.generateImage({
-          prompt: enhancedPrompt.prompt,
-          negativePrompt: enhancedPrompt.negativePrompt,
-          width: thumbnailParams.resolution.width,
-          height: thumbnailParams.resolution.height,
-          numberOfImages: 1,
-          cfgScale: 9, // Higher CFG for better prompt adherence
-          steps: 40, // More steps for better quality
-          modelId: 'stable-diffusion-xl-1024-v1-0'
-        });
-        
-        if (!generationResult || !generationResult.images || generationResult.images.length === 0) {
-          throw new ApiError('Failed to generate thumbnail image', 500);
+        try {
+          // Use enhanced prompt engineering for better quality
+          const generationResult = await StabilityAIService.generateImage({
+            prompt: enhancedPrompt.prompt,
+            negativePrompt: enhancedPrompt.negativePrompt,
+            width: thumbnailParams.resolution.width,
+            height: thumbnailParams.resolution.height,
+            numberOfImages: 1,
+            cfgScale: 9, // Higher CFG for better prompt adherence
+            steps: 40, // More steps for better quality
+            modelId: 'stable-diffusion-xl-1024-v1-0'
+          });
+          
+          if (!generationResult || !generationResult.images || generationResult.images.length === 0) {
+            throw new ApiError('Failed to generate thumbnail image', 500);
+          }
+          
+          generatedImage = generationResult.images[0];
+          console.log(`Generated image successfully, base64 length: ${generatedImage.base64.length}`);
+        } catch (error) {
+          console.error('Error generating AI image:', error);
+          throw new ApiError(`Failed to generate AI image: ${error.message}`, 500);
         }
-        
-        generatedImage = generationResult.images[0];
       }
       
       // 9. Compose the final thumbnail with text overlay and user assets
       let finalImageBuffer;
       
-      if (useCustomBackground) {
-        // Use the first user asset as background if not using AI
-        finalImageBuffer = await this.createCompositeWithAssets(
-          processedAssets, 
-          null, // No AI image
-          textLayout,
-          title,
-          subtitle,
-          thumbnailParams
-        );
-      } else if (generatedImage && processedAssets.length > 0) {
-        // Combine AI generation with user assets
-        finalImageBuffer = await this.createCompositeWithAssets(
-          processedAssets,
-          generatedImage,
-          textLayout,
-          title,
-          subtitle,
-          thumbnailParams
-        );
-      } else if (generatedImage) {
-        // Just use the AI generation and add text
-        finalImageBuffer = await this.addTextOverlay(
-          Buffer.from(generatedImage.base64, 'base64'),
-          textLayout,
-          title,
-          subtitle,
-          thumbnailParams
-        );
-      } else {
-        throw new ApiError('No image source available for thumbnail', 500);
+      try {
+        if (useCustomBackground) {
+          // Use the first user asset as background if not using AI
+          finalImageBuffer = await this.createCompositeWithAssets(
+            processedAssets, 
+            null, // No AI image
+            textLayout,
+            title,
+            subtitle,
+            thumbnailParams
+          );
+        } else if (generatedImage && processedAssets.length > 0) {
+          // Combine AI generation with user assets
+          finalImageBuffer = await this.createCompositeWithAssets(
+            processedAssets,
+            generatedImage,
+            textLayout,
+            title,
+            subtitle,
+            thumbnailParams
+          );
+        } else if (generatedImage) {
+          // Just use the AI generation and add text
+          try {
+            // Decode base64 data - make sure it's properly formatted
+            const imageData = generatedImage.base64.startsWith('data:') 
+              ? generatedImage.base64
+              : `data:image/png;base64,${generatedImage.base64}`;
+              
+            // Extract the actual base64 content
+            const base64Content = imageData.split(',')[1] || generatedImage.base64;
+            
+            // Convert to buffer
+            const buffer = Buffer.from(base64Content, 'base64');
+            console.log(`Converted base64 to buffer of size: ${buffer.length} bytes`);
+            
+            // Add text overlay to the buffer
+            finalImageBuffer = await this.addTextOverlay(
+              buffer,
+              textLayout,
+              title,
+              subtitle,
+              thumbnailParams
+            );
+          } catch (err) {
+            console.error('Error processing AI image buffer:', err);
+            throw new ApiError(`Failed to process AI image: ${err.message}`, 500);
+          }
+        } else {
+          throw new ApiError('No image source available for thumbnail', 500);
+        }
+      } catch (error) {
+        console.error('Error processing thumbnail image:', error);
+        throw new ApiError(`Failed to process thumbnail: ${error.message}`, 500);
       }
       
       // 10. Upload to Cloudinary in the thumbnail folder
@@ -228,97 +257,53 @@ class ThumbnailService {
       let baseImageBuffer;
       
       if (aiImage) {
-        baseImageBuffer = Buffer.from(aiImage.base64, 'base64');
+        try {
+          // Process base64 data properly
+          const imageData = aiImage.base64.startsWith('data:') 
+            ? aiImage.base64
+            : `data:image/png;base64,${aiImage.base64}`;
+            
+          // Extract the actual base64 content
+          const base64Content = imageData.split(',')[1] || aiImage.base64;
+          
+          // Convert to buffer
+          baseImageBuffer = Buffer.from(base64Content, 'base64');
+          console.log(`AI image converted to buffer of size: ${baseImageBuffer.length} bytes`);
+        } catch (err) {
+          console.error('Error processing AI image for composite:', err);
+          throw new ApiError(`Failed to process AI image for composite: ${err.message}`, 500);
+        }
       } else if (assets.length > 0) {
-        // Download the first asset to use as background
-        const response = await axios.get(assets[0].url, { responseType: 'arraybuffer' });
-        baseImageBuffer = Buffer.from(response.data);
+        try {
+          // Download the first asset to use as background
+          const response = await axios.get(assets[0].url, { responseType: 'arraybuffer' });
+          baseImageBuffer = Buffer.from(response.data);
+          console.log(`Downloaded asset image of size: ${baseImageBuffer.length} bytes`);
+        } catch (err) {
+          console.error('Error downloading asset for background:', err);
+          throw new ApiError(`Failed to download asset for background: ${err.message}`, 500);
+        }
       } else {
         throw new ApiError('No base image available for composition', 500);
       }
       
-      // Create a Sharp instance for the base image
-      let composition = sharp(baseImageBuffer)
-        .resize(thumbnailParams.resolution.width, thumbnailParams.resolution.height, {
-          fit: 'cover',
-          position: 'center'
-        });
-      
-      // If we have additional assets (and not using the first one as background)
-      if (assets.length > (aiImage ? 0 : 1)) {
-        const overlays = [];
-        
-        // Calculate positions for assets
-        const startIndex = aiImage ? 0 : 1; // Skip first asset if using it as background
-        const assetCount = assets.length - startIndex;
-        
-        for (let i = startIndex; i < assets.length; i++) {
-          const asset = assets[i];
-          
-          // Download the asset
-          const response = await axios.get(asset.url, { responseType: 'arraybuffer' });
-          const assetBuffer = Buffer.from(response.data);
-          
-          // Determine position based on number of assets
-          let position;
-          if (assetCount === 1) {
-            // Single asset centered slightly to the right
-            position = { top: Math.floor(thumbnailParams.resolution.height * 0.25), 
-                        left: Math.floor(thumbnailParams.resolution.width * 0.55) };
-          } else if (assetCount === 2) {
-            // Two assets positioned on left and right
-            position = { top: Math.floor(thumbnailParams.resolution.height * 0.25), 
-                        left: i === startIndex ? 
-                             Math.floor(thumbnailParams.resolution.width * 0.25) : 
-                             Math.floor(thumbnailParams.resolution.width * 0.65) };
-          } else {
-            // Multiple assets arranged in a grid
-            const row = Math.floor((i - startIndex) / 2);
-            const col = (i - startIndex) % 2;
-            position = { 
-              top: Math.floor(thumbnailParams.resolution.height * (0.2 + row * 0.35)), 
-              left: Math.floor(thumbnailParams.resolution.width * (0.25 + col * 0.45)) 
-            };
-          }
-          
-          // Calculate size (max 40% of width or height)
-          const maxWidth = Math.floor(thumbnailParams.resolution.width * 0.4);
-          const maxHeight = Math.floor(thumbnailParams.resolution.height * 0.4);
-          
-          // Create a Sharp instance for the asset
-          const processedAsset = await sharp(assetBuffer)
-            .resize(maxWidth, maxHeight, {
-              fit: 'inside',
-              withoutEnlargement: true
-            })
-            .toBuffer();
-          
-          // Get dimensions of processed asset
-          const assetMetadata = await sharp(processedAsset).metadata();
-          
-          // Add to overlays
-          overlays.push({
-            input: processedAsset,
-            top: position.top,
-            left: position.left,
-            gravity: 'northwest'
+      // Simple processing - just resize the base image and return it as JPEG
+      try {
+        // Create a Sharp instance for the base image
+        const composition = sharp(baseImageBuffer, { failOnError: false })
+          .resize({
+            width: thumbnailParams.resolution.width,
+            height: thumbnailParams.resolution.height,
+            fit: 'cover',
+            position: 'center'
           });
-        }
         
-        // Apply overlays
-        if (overlays.length > 0) {
-          composition = composition.composite(overlays);
-        }
+        // For now, just return the base image resized to simplify debugging
+        return composition.jpeg().toBuffer();
+      } catch (err) {
+        console.error('Error creating composition with Sharp:', err);
+        throw new ApiError(`Failed to create image composition: ${err.message}`, 500);
       }
-      
-      // Add text overlay
-      return this.addTextOverlayToComposition(
-        composition, 
-        textLayout, 
-        title, 
-        subtitle, 
-        thumbnailParams
-      );
     } catch (error) {
       console.error('Error creating composite with assets:', error);
       throw new ApiError(`Failed to create composite: ${error.message}`, 500);
@@ -337,19 +322,24 @@ class ThumbnailService {
    */
   static async addTextOverlay(imageBuffer, textLayout, title, subtitle, thumbnailParams) {
     try {
-      const composition = sharp(imageBuffer)
-        .resize(thumbnailParams.resolution.width, thumbnailParams.resolution.height, {
+      console.log(`Adding text overlay to image buffer of size: ${imageBuffer.length} bytes`);
+      
+      // Validate the buffer is not empty
+      if (!imageBuffer || imageBuffer.length === 0) {
+        throw new ApiError('Empty image buffer provided', 500);
+      }
+      
+      // Create a simple composition with just the image resized
+      const composition = sharp(imageBuffer, { failOnError: false })
+        .resize({
+          width: thumbnailParams.resolution.width,
+          height: thumbnailParams.resolution.height,
           fit: 'cover',
           position: 'center'
         });
       
-      return this.addTextOverlayToComposition(
-        composition, 
-        textLayout, 
-        title, 
-        subtitle, 
-        thumbnailParams
-      );
+      // Skip text overlay for now to isolate the issue
+      return composition.jpeg().toBuffer();
     } catch (error) {
       console.error('Error adding text overlay:', error);
       throw new ApiError(`Failed to add text overlay: ${error.message}`, 500);
@@ -368,39 +358,9 @@ class ThumbnailService {
    */
   static async addTextOverlayToComposition(composition, textLayout, title, subtitle, thumbnailParams) {
     try {
-      // This is a simplified implementation
-      // In a real implementation, you would create a text overlay using
-      // Canvas or a similar library, then composite it onto the image
-      
-      // For now, we'll just add a semi-transparent overlay at the bottom for text placement
-      const overlayWidth = thumbnailParams.resolution.width;
-      const overlayHeight = Math.floor(thumbnailParams.resolution.height * 0.25);
-      
-      // Create a semi-transparent overlay
-      const textBackground = await sharp({
-        create: {
-          width: overlayWidth,
-          height: overlayHeight,
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 0.5 }
-        }
-      }).toBuffer();
-      
-      // Add the overlay to the bottom of the image
-      const withOverlay = await composition.composite([
-        {
-          input: textBackground,
-          top: thumbnailParams.resolution.height - overlayHeight,
-          left: 0,
-          gravity: 'northwest'
-        }
-      ]).toBuffer();
-      
-      // In a real implementation, you would now add the text
-      // Since Sharp doesn't directly support text, you would need to use
-      // another library like Canvas, then composite that onto the image
-      
-      return withOverlay;
+      // Skip the text overlay for now to fix the base issue
+      // Just return the composition as JPEG
+      return composition.jpeg().toBuffer();
     } catch (error) {
       console.error('Error adding text overlay to composition:', error);
       throw new ApiError(`Failed to add text overlay: ${error.message}`, 500);
