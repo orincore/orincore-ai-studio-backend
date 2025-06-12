@@ -5,7 +5,8 @@ const {
   getImage,
   removeImage,
   getImageOptions,
-  suggestStyles
+  suggestStyles,
+  analyzePrompt
 } = require('../controllers/imageController');
 const { protect } = require('../middlewares/authMiddleware');
 
@@ -16,6 +17,7 @@ router.use(protect);
 
 router.post('/generate', generateImage);
 router.post('/suggest-styles', suggestStyles);
+router.post('/analyze-prompt', analyzePrompt);
 router.get('/', getImages);
 router.get('/options', getImageOptions);
 router.get('/:id', getImage);

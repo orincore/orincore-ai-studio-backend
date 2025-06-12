@@ -14,7 +14,45 @@ const STABILITY_API_URL = process.env.STABILITY_API_URL || 'https://api.stabilit
 const MODELS = {
   STABLE_DIFFUSION_XL: 'stable-diffusion-xl-1024-v1-0',
   STABLE_DIFFUSION_XL_BETA: 'stable-diffusion-xl-beta-v2-2-2',
-  STABLE_DIFFUSION: 'stable-diffusion-v1-5'
+  STABLE_DIFFUSION: 'stable-diffusion-v1-5',
+  SDXL_TURBO: 'sdxl-turbo-1-0',  // Faster generation but less detail
+  STABLE_DIFFUSION_3: 'stable-diffusion-3' // Future-proofing for when SD3 is released
+};
+
+// Define model-specific configurations
+const MODEL_CONFIG = {
+  [MODELS.STABLE_DIFFUSION_XL]: {
+    maxPromptLength: 2000,
+    recommendedSteps: 40,
+    recommendedCfg: 8
+  },
+  [MODELS.STABLE_DIFFUSION_XL_BETA]: {
+    maxPromptLength: 2000,
+    recommendedSteps: 40, 
+    recommendedCfg: 8
+  },
+  [MODELS.STABLE_DIFFUSION]: {
+    maxPromptLength: 1500,
+    recommendedSteps: 50,  // Needs more steps
+    recommendedCfg: 10     // Needs higher CFG
+  },
+  [MODELS.SDXL_TURBO]: {
+    maxPromptLength: 1500,
+    recommendedSteps: 25,  // Turbo needs fewer steps
+    recommendedCfg: 7.5
+  },
+  [MODELS.STABLE_DIFFUSION_3]: {
+    maxPromptLength: 2500,
+    recommendedSteps: 35,
+    recommendedCfg: 7
+  }
+};
+
+// Default model settings if specific model is not found
+const DEFAULT_MODEL_CONFIG = {
+  maxPromptLength: 1500,
+  recommendedSteps: 40,
+  recommendedCfg: 8
 };
 
 // Define image resolutions
@@ -214,33 +252,38 @@ const generateImage = async ({
   // Get generation type configuration
   const genType = GENERATION_TYPES[generationType] || GENERATION_TYPES.GENERAL;
   
-  // Apply type-specific settings
-  let enhancedPrompt = `${genType.promptPrefix}${prompt}${genType.promptSuffix}`;
-  let enhancedNegativePrompt = negativePrompt || genType.negativePrompt;
+  // Apply smart prompt enhancement
+  let enhancedPrompt = enhancePromptForAccuracy(prompt, style, generationType);
+  
+  // Apply generation-type specifics after the smart enhancement
+  enhancedPrompt = `${genType.promptPrefix}${enhancedPrompt}${genType.promptSuffix}`;
+  
+  // Enhance negative prompt with comprehensive quality and accuracy issues
+  let enhancedNegativePrompt = enhanceNegativePrompt(negativePrompt || genType.negativePrompt, style);
 
   // Apply style-specific prompt enhancements
   if (style) {
     // For specific styles, enhance the prompt further
     switch (style) {
       case STYLES.REALISTIC:
-        enhancedPrompt = `${enhancedPrompt}, photorealistic, highly detailed, sharp focus, realistic lighting and textures, professional photography, masterpiece, 8k`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, cartoon, anime, illustration, drawing, painting, digital art, sketchy, blurry, low quality, deformed`;
+        enhancedPrompt = `${enhancedPrompt}, photorealistic, highly detailed, sharp focus, realistic lighting and textures, professional photography, masterpiece, 8k, hyperrealistic, lifelike, perfect composition`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, cartoon, anime, illustration, drawing, painting, digital art, sketchy, blurry, low quality, deformed, disfigured, mutated, unnatural pose, bad anatomy, wrong proportions`;
         break;
       case STYLES.ANIME:
-        enhancedPrompt = `${enhancedPrompt}, anime style, manga, detailed, 2D, vibrant colors, clean lines, anime illustration, japanese anime style, high quality anime`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, western, photorealistic, 3D, realistic, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, blurry, mutated`;
+        enhancedPrompt = `${enhancedPrompt}, anime style, manga, detailed, 2D, vibrant colors, clean lines, anime illustration, japanese anime style, high quality anime, professional anime artwork, studio ghibli, anime key visual`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, western, photorealistic, 3D, realistic, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, blurry, mutated, extra limbs, poorly drawn face, bad proportions`;
         break;
       case STYLES.CARTOON_STYLE:
-        enhancedPrompt = `${enhancedPrompt}, cartoon style, stylized, bright colors, simple shapes, bold outlines, cheerful, animated, clean linework, detailed, high quality`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, detailed, complex, dark, gloomy, noisy, blurry, low quality`;
+        enhancedPrompt = `${enhancedPrompt}, cartoon style, stylized, bright colors, simple shapes, bold outlines, cheerful, animated, clean linework, detailed, high quality, professional animation, pixar style, disney style`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, detailed, complex, dark, gloomy, noisy, blurry, low quality, grainy, messy linework, inconsistent style`;
         break;
       case STYLES.DIGITAL_ART:
-        enhancedPrompt = `${enhancedPrompt}, digital art, vibrant colors, detailed, fantasy, sci-fi, conceptual, polished, masterpiece, trending on artstation, 8k`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, sketch, rough, physical media, blurry, low quality`;
+        enhancedPrompt = `${enhancedPrompt}, digital art, vibrant colors, detailed, fantasy, sci-fi, conceptual, polished, masterpiece, trending on artstation, 8k, professional digital painting, highly detailed, intricate details, concept art, sharp focus`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, sketch, rough, physical media, blurry, low quality, amateurish, inconsistent lighting, bad composition, poor perspective`;
         break;
       case STYLES.FANTASY:
-        enhancedPrompt = `${enhancedPrompt}, fantasy art, magical, ethereal, dreamy, mystical, epic, dramatic lighting, fantasy landscape, detailed, masterpiece`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, mundane, realistic, photo, photograph, everyday, blurry, low quality`;
+        enhancedPrompt = `${enhancedPrompt}, fantasy art, magical, ethereal, dreamy, mystical, epic, dramatic lighting, fantasy landscape, detailed, masterpiece, intricate details, surreal, otherworldly, magical atmosphere`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, mundane, realistic, photo, photograph, everyday, blurry, low quality, simple, plain, ordinary, grainy`;
         break;
     }
   }
@@ -249,19 +292,30 @@ const generateImage = async ({
   const selectedModel = modelId || genType.defaultModel;
   const selectedResolution = resolution || genType.defaultResolution;
 
+  // Get model-specific configuration
+  const modelConfig = MODEL_CONFIG[selectedModel] || DEFAULT_MODEL_CONFIG;
+
+  // Limit prompt length according to model guidelines - this can improve accuracy
+  if (enhancedPrompt.length > modelConfig.maxPromptLength) {
+    console.log(`Warning: Prompt length (${enhancedPrompt.length}) exceeds model maximum (${modelConfig.maxPromptLength}). Truncating.`);
+    enhancedPrompt = enhancedPrompt.substring(0, modelConfig.maxPromptLength);
+  }
+
   try {
     // Set resolution dimensions - ensure these match the aspect ratio selection exactly
     const dimensions = RESOLUTIONS[selectedResolution] || RESOLUTIONS.NORMAL;
     
     // Log the selected resolution to help with debugging
     console.log(`Generating image with resolution: ${selectedResolution} (${dimensions.width}x${dimensions.height})`);
+    console.log(`Enhanced prompt: ${enhancedPrompt}`);
+    console.log(`Enhanced negative prompt: ${enhancedNegativePrompt}`);
 
     // Ensure number of images is between 1 and 4
     const samples = Math.min(Math.max(1, numberOfImages), 4);
 
-    // Increase the default quality settings
-    const effectiveCfgScale = Math.max(cfgScale, 7); // Ensure minimum cfg of 7 for better quality
-    const effectiveSteps = Math.max(steps, 30);     // Ensure minimum steps of 30 for better detail
+    // Use model-specific recommended settings
+    const effectiveCfgScale = Math.max(cfgScale, modelConfig.recommendedCfg);
+    const effectiveSteps = Math.max(steps, modelConfig.recommendedSteps);
 
     // Construct the request payload
     const payload = {
@@ -277,7 +331,13 @@ const generateImage = async ({
       ...(style && { style_preset: style }),
       sampler: "K_DPMPP_2M",  // Use a high-quality sampler
       clipguidance_preset: "FAST_BLUE", // More refined output
-      seed: 0 // Random seed each time for variety
+      seed: 0, // Random seed each time for variety
+      
+      // Advanced parameters for improved accuracy
+      guidance_preset: "FAST_GREEN", // Better subject accuracy
+      
+      // Add more weight to the text prompt for SDXL models
+      weight_method: "FAVOR_ORIGINAL_PROMPT"
     };
 
     // Make the API request
@@ -328,6 +388,180 @@ const generateImage = async ({
     
     throw new ApiError('Failed to generate image: ' + error.message, 500);
   }
+};
+
+/**
+ * Enhance a prompt to improve accuracy and detail
+ * 
+ * @param {string} prompt - The original prompt
+ * @param {string} style - The style being used
+ * @param {string} generationType - The type of generation
+ * @returns {string} - Enhanced prompt
+ */
+const enhancePromptForAccuracy = (prompt, style, generationType) => {
+  // Clean and normalize the prompt
+  const cleanPrompt = prompt.trim();
+  
+  // Identify key subject(s) in the prompt
+  const subjects = extractSubjects(cleanPrompt);
+  
+  // Start with the original prompt
+  let enhancedPrompt = cleanPrompt;
+  
+  // Check if we have explicit descriptors for composition and detail
+  const hasCompositionTerms = /composition|framing|centered|angle|perspective|view|shot|background|foreground|scene/i.test(cleanPrompt);
+  const hasDetailTerms = /detailed|high[ -]quality|sharp|clear|crisp|precise|fine details|intricate/i.test(cleanPrompt);
+  const hasLightingTerms = /lighting|light|shadow|illuminated|dark|bright|sunlight|moonlight|dramatic|ambient/i.test(cleanPrompt);
+  const hasColorTerms = /color|vibrant|bright|dark|pale|red|blue|green|yellow|purple|orange|black|white|colorful|monochrome|grayscale/i.test(cleanPrompt);
+  
+  // Add descriptors if they're missing and not a style conflict
+  if (!hasCompositionTerms && !style) {
+    enhancedPrompt += ", perfect composition, centered";
+  }
+  
+  if (!hasDetailTerms) {
+    enhancedPrompt += ", highly detailed, intricate details";
+  }
+  
+  if (!hasLightingTerms && !style) {
+    enhancedPrompt += ", perfect lighting";
+  }
+  
+  if (!hasColorTerms && !style) {
+    enhancedPrompt += ", vibrant colors";
+  }
+  
+  // Special subject handling
+  const isPersonPhoto = /person|man|woman|girl|boy|people|portrait|face|human/i.test(cleanPrompt);
+  const isLandscape = /landscape|nature|mountain|forest|beach|ocean|sky|sunset|outdoor|scenery/i.test(cleanPrompt);
+  const isProduct = /product|item|device|gadget|merchandise|packaging/i.test(cleanPrompt);
+  const isFood = /food|meal|dish|cuisine|dessert|cake|restaurant/i.test(cleanPrompt);
+  const isAnimal = /animal|pet|dog|cat|bird|wildlife/i.test(cleanPrompt);
+  
+  // Apply specialized enhancements based on subject type
+  if (isPersonPhoto && generationType !== 'ANIME') {
+    enhancedPrompt += ", professional portrait photography, perfect face, detailed facial features, photorealistic, studio lighting";
+  }
+  
+  if (isLandscape) {
+    enhancedPrompt += ", wide angle lens, panoramic view, stunning view, professional landscape photography, nature photography";
+  }
+  
+  if (isProduct) {
+    enhancedPrompt += ", commercial product photography, studio lighting, professional photography, clean background, high-end advertising, product showcase";
+  }
+  
+  if (isFood) {
+    enhancedPrompt += ", food photography, appetizing, culinary photography, studio lighting, commercial, professional food styling";
+  }
+  
+  if (isAnimal) {
+    enhancedPrompt += ", detailed fur/feathers, wildlife photography, perfect pose, natural habitat, telephoto lens";
+  }
+  
+  // Add emphasis to main subjects for better focus
+  if (subjects.length > 0) {
+    subjects.forEach(subject => {
+      // Don't duplicate subjects that are already part of descriptive phrases
+      if (!new RegExp(`detailed ${subject}|${subject} with details|${subject} detailed`, 'i').test(enhancedPrompt)) {
+        enhancedPrompt += `, detailed ${subject}`;
+      }
+    });
+  }
+  
+  // Special handling for certain generation types
+  if (generationType === 'LOGO') {
+    enhancedPrompt += ", perfect logo design, professional branding, minimalist, scalable, vector style";
+  } else if (generationType === 'POSTER') {
+    enhancedPrompt += ", professional design, eye-catching, balanced composition, advertising quality";
+  } else if (generationType === 'THUMBNAIL') {
+    enhancedPrompt += ", attention-grabbing, clear focus, vibrant, professional thumbnail design";
+  }
+  
+  return enhancedPrompt;
+};
+
+/**
+ * Extract potential subjects from a prompt
+ * 
+ * @param {string} prompt - The prompt to analyze
+ * @returns {string[]} - Array of potential subjects
+ */
+const extractSubjects = (prompt) => {
+  // Simple extraction logic for common subjects
+  const subjects = [];
+  
+  // Common subject patterns
+  const patterns = [
+    /(?:a|an|the)\s+([a-z]+\s+[a-z]+)/gi,  // "a red car", "the tall building"
+    /(?:of|with)\s+(?:a|an|the)?\s+([a-z]+)/gi, // "picture of mountains", "man with hat"
+    /([a-z]+)\s+(?:in|on|at)\s+/gi,  // "woman in dress", "book on table"
+  ];
+  
+  // Extract potential subjects using patterns
+  patterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(prompt)) !== null) {
+      if (match[1] && match[1].length > 3) { // Avoid very short words
+        subjects.push(match[1].trim());
+      }
+    }
+  });
+  
+  // Check for single nouns that might be subjects
+  const words = prompt.split(/\s+/);
+  words.forEach(word => {
+    if (word.length > 4 && !subjects.includes(word)) {
+      subjects.push(word);
+    }
+  });
+  
+  return [...new Set(subjects)].slice(0, 3); // Deduplicate and limit to top 3
+};
+
+/**
+ * Enhance negative prompts to avoid common issues
+ * 
+ * @param {string} negativePrompt - The original negative prompt
+ * @param {string} style - The style being used
+ * @returns {string} - Enhanced negative prompt
+ */
+const enhanceNegativePrompt = (negativePrompt, style) => {
+  // Common quality issues to avoid
+  const qualityIssues = "ugly, deformed, disfigured, poor quality, low quality, blurry, pixelated, grainy, noisy, jpeg artifacts, compression artifacts, amateur, distorted";
+  
+  // Anatomy issues (for human subjects)
+  const anatomyIssues = "bad anatomy, wrong anatomy, extra limbs, missing limbs, fused fingers, too many fingers, missing fingers, extra digits, fewer digits, mutated hands, poorly drawn hands, poorly drawn face, mutation, mutated";
+  
+  // Composition issues
+  const compositionIssues = "cut off, cropped, frame cut, out of frame, poorly framed, bad composition, malformed, unnatural pose, uneven composition";
+  
+  // Initialize with the original negative prompt
+  let enhanced = negativePrompt;
+  
+  // Add quality issues if not already present
+  if (!qualityIssues.split(', ').some(issue => enhanced.includes(issue))) {
+    enhanced += `, ${qualityIssues}`;
+  }
+  
+  // For realistic styles, include anatomy issues
+  if (style === STYLES.REALISTIC) {
+    if (!anatomyIssues.split(', ').some(issue => enhanced.includes(issue))) {
+      enhanced += `, ${anatomyIssues}`;
+    }
+  }
+  
+  // Add composition issues
+  if (!compositionIssues.split(', ').some(issue => enhanced.includes(issue))) {
+    enhanced += `, ${compositionIssues}`;
+  }
+  
+  // Add text and watermark avoidance
+  if (!enhanced.includes("text") && !enhanced.includes("watermark")) {
+    enhanced += ", text, watermark, signature, copyright";
+  }
+  
+  return enhanced;
 };
 
 /**
@@ -432,11 +666,14 @@ const getSuggestedStyles = (prompt) => {
 
 module.exports = {
   generateImage,
-  getGenerationTypes,
-  getStylePresets,
-  getSuggestedStyles,
   MODELS,
   RESOLUTIONS,
   STYLES,
-  GENERATION_TYPES
+  GENERATION_TYPES,
+  MODEL_CONFIG,
+  getGenerationTypes,
+  getStylePresets,
+  getSuggestedStyles,
+  enhancePromptForAccuracy,
+  enhanceNegativePrompt
 }; 

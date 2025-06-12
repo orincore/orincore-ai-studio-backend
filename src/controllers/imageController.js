@@ -229,11 +229,87 @@ const suggestStyles = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Analyze a prompt and provide guidance on improving accuracy
+ * @route   POST /api/images/analyze-prompt
+ * @access  Private
+ */
+const analyzePrompt = asyncHandler(async (req, res) => {
+  const { prompt } = req.body;
+  
+  if (!prompt) {
+    throw new ApiError('Prompt is required', 400);
+  }
+  
+  // Get potential subjects from the prompt
+  const originalPrompt = prompt.trim();
+  
+  // Check if the prompt has specific details that help with accuracy
+  const hasCompositionTerms = /composition|framing|centered|angle|perspective|view|shot|background|foreground|scene/i.test(originalPrompt);
+  const hasDetailTerms = /detailed|high[ -]quality|sharp|clear|crisp|precise|fine details|intricate/i.test(originalPrompt);
+  const hasLightingTerms = /lighting|light|shadow|illuminated|dark|bright|sunlight|moonlight|dramatic|ambient/i.test(originalPrompt);
+  const hasColorTerms = /color|vibrant|bright|dark|pale|red|blue|green|yellow|purple|orange|black|white|colorful|monochrome|grayscale/i.test(originalPrompt);
+  
+  // Generate the enhanced prompt
+  const enhancedPrompt = enhancePromptForAccuracy(originalPrompt, null, 'GENERAL');
+  
+  // Generate suggested improvements
+  const suggestions = [];
+  
+  if (!hasCompositionTerms) {
+    suggestions.push({
+      category: 'Composition',
+      suggestion: 'Add details about composition, framing, or perspective',
+      examples: ['centered', 'close-up', 'wide angle view', 'from above', 'dramatic angle']
+    });
+  }
+  
+  if (!hasDetailTerms) {
+    suggestions.push({
+      category: 'Detail',
+      suggestion: 'Specify the level of detail you want',
+      examples: ['highly detailed', 'intricate details', 'fine details', 'photorealistic', 'crisp']
+    });
+  }
+  
+  if (!hasLightingTerms) {
+    suggestions.push({
+      category: 'Lighting',
+      suggestion: 'Include lighting information',
+      examples: ['natural lighting', 'dramatic lighting', 'golden hour', 'soft lighting', 'studio lighting']
+    });
+  }
+  
+  if (!hasColorTerms) {
+    suggestions.push({
+      category: 'Color',
+      suggestion: 'Mention color palette or specific colors',
+      examples: ['vibrant colors', 'pastel colors', 'blue tones', 'colorful', 'black and white']
+    });
+  }
+  
+  if (originalPrompt.split(' ').length < 5) {
+    suggestions.push({
+      category: 'Length',
+      suggestion: 'Your prompt is very short. Add more details for better results',
+      examples: ['Describe the subject more thoroughly', 'Add context about the environment', 'Specify style or mood']
+    });
+  }
+  
+  res.status(200).json({
+    originalPrompt,
+    enhancedPrompt,
+    suggestions,
+    styleRecommendations: getSuggestedStyles(originalPrompt)
+  });
+});
+
 module.exports = {
   generateImage,
   getImages,
   getImage,
   removeImage,
   getImageOptions,
-  suggestStyles
+  suggestStyles,
+  analyzePrompt
 }; 
