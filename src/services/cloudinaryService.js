@@ -30,7 +30,7 @@ class CloudinaryService {
   /**
    * Upload an image buffer to Cloudinary
    * 
-   * @param {Buffer} imageBuffer - Image buffer
+   * @param {Buffer|ArrayBuffer} imageBuffer - Image buffer
    * @param {string} folder - Cloudinary folder path
    * @param {string} publicId - Public ID for the image (optional)
    * @returns {Promise<Object>} - Cloudinary upload result
@@ -38,7 +38,25 @@ class CloudinaryService {
   static async uploadImageBuffer(imageBuffer, folder, publicId = null) {
     try {
       // Handle case where imageBuffer is a multer file object
-      const buffer = imageBuffer.buffer ? imageBuffer.buffer : imageBuffer;
+      let buffer = imageBuffer;
+      
+      // Handle multer file object
+      if (imageBuffer && imageBuffer.buffer) {
+        buffer = imageBuffer.buffer;
+      }
+      
+      // Convert ArrayBuffer to Buffer if needed
+      if (buffer instanceof ArrayBuffer) {
+        buffer = Buffer.from(buffer);
+      }
+      
+      // Ensure we have a valid buffer
+      if (!Buffer.isBuffer(buffer)) {
+        console.log(`Converting data of type ${typeof buffer} to Buffer`);
+        buffer = Buffer.from(buffer);
+      }
+      
+      console.log(`Uploading buffer to Cloudinary, buffer size: ${buffer.length} bytes, type: ${buffer.constructor.name}`);
       
       // Create a promise to handle the upload
       return new Promise((resolve, reject) => {
@@ -55,7 +73,7 @@ class CloudinaryService {
           (error, result) => {
             if (error) {
               console.error('Error in upload stream:', error);
-              return reject(new ApiError('Failed to upload image buffer', 500));
+              return reject(new ApiError(`Failed to upload image buffer: ${error.message}`, 500));
             }
             return resolve(result);
           }
@@ -66,7 +84,7 @@ class CloudinaryService {
       });
     } catch (error) {
       console.error('Error uploading image buffer to Cloudinary:', error);
-      throw new ApiError('Failed to upload image buffer to cloud storage', 500);
+      throw new ApiError(`Failed to upload image buffer to cloud storage: ${error.message}`, 500);
     }
   }
   

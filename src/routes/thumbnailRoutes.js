@@ -26,7 +26,8 @@ const upload = multer({
   }
 }).fields([
   { name: 'userAssets', maxCount: 4 },
-  { name: 'userAsset', maxCount: 1 } // Keep for backward compatibility
+  { name: 'userAsset', maxCount: 1 },
+  { name: 'userImages', maxCount: 4 }
 ]);
 
 // Custom error handler for multer errors

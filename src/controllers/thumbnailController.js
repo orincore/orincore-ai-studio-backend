@@ -39,32 +39,44 @@ class ThumbnailController {
       }
       
       // Check for user assets (multiple image uploads)
-      let userAssets = [];
+      let userImages = [];
       
       try {
         if (req.files) {
           console.log('File upload fields found:', Object.keys(req.files));
           
-          if (req.files.userAssets) {
+          // Check for the new userImages field
+          if (req.files.userImages) {
+            console.log('userImages field found with:', 
+              Array.isArray(req.files.userImages) ? 
+              `${req.files.userImages.length} files` : 
+              'single file');
+              
+            userImages = Array.isArray(req.files.userImages) 
+              ? req.files.userImages 
+              : [req.files.userImages];
+          }
+          
+          // For backward compatibility, also check for userAssets
+          if (req.files.userAssets && userImages.length === 0) {
             console.log('userAssets field found with:', 
               Array.isArray(req.files.userAssets) ? 
               `${req.files.userAssets.length} files` : 
               'single file');
             
-            // Handle array of files
-            userAssets = Array.isArray(req.files.userAssets) 
+            userImages = Array.isArray(req.files.userAssets) 
               ? req.files.userAssets 
               : [req.files.userAssets];
           }
           
           // For backward compatibility, also check for single userAsset
-          if (req.files.userAsset && userAssets.length === 0) {
+          if (req.files.userAsset && userImages.length === 0) {
             console.log('userAsset field found with:', 
               Array.isArray(req.files.userAsset) ? 
               `${req.files.userAsset.length} files` : 
               'single file');
               
-            userAssets = Array.isArray(req.files.userAsset) 
+            userImages = Array.isArray(req.files.userAsset) 
               ? req.files.userAsset 
               : [req.files.userAsset];
           }
@@ -76,27 +88,41 @@ class ThumbnailController {
         // Continue without user assets if there's an error
       }
       
-      console.log(`Generating professional thumbnail with ${userAssets.length} user images and useAI=${useAI}`);
+      console.log(`Generating professional thumbnail with ${userImages.length} user images and useAI=${useAI}`);
       
-      if (userAssets.length > 0) {
-        console.log(`First image details: name=${userAssets[0].originalname}, type=${userAssets[0].mimetype}, size=${userAssets[0].size} bytes`);
+      if (userImages.length > 0) {
+        console.log(`First image details: name=${userImages[0].originalname}, type=${userImages[0].mimetype}, size=${userImages[0].size} bytes`);
       }
       
-      // Generate thumbnail
-      const result = await ThumbnailService.generateThumbnail(userId, {
+      // Create a new instance of ThumbnailService
+      const thumbnailService = new ThumbnailService();
+      
+      // Initialize service dependencies
+      thumbnailService.stabilityAIService = new (require('../services/stabilityAIService'))();
+      thumbnailService.cloudinaryService = require('../services/cloudinaryService');
+      
+      // Prepare options for the thumbnail generation
+      const options = {
         title,
         subtitle,
         tags: Array.isArray(tags) ? tags : (tags ? [tags] : []),
-        contentCategory,
+        category: contentCategory,
         stylePreference,
-        colorPreferences: Array.isArray(colorPreferences) ? colorPreferences : [],
+        colors: Array.isArray(colorPreferences) ? colorPreferences : [],
         prompt,
-        userAssets,
+        userImages,
         useAI: useAI === false ? false : true,
         composition
-      });
+      };
       
-      res.status(201).json(result);
+      // Generate thumbnail
+      const result = await thumbnailService.generateThumbnail(options);
+      
+      res.status(201).json({
+        success: true,
+        message: 'YouTube thumbnail generated successfully',
+        data: result
+      });
     } catch (error) {
       next(error);
     }

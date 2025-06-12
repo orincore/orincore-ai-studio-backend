@@ -18,6 +18,12 @@ const axios = require('axios');
  * Service for YouTube thumbnail generation
  */
 class ThumbnailService {
+  constructor() {
+    // These will be initialized in the controller
+    this.stabilityAIService = null;
+    this.cloudinaryService = null;
+  }
+  
   /**
    * Generate a professional YouTube thumbnail image
    * 
@@ -435,6 +441,218 @@ class ThumbnailService {
         error.message || 'Failed to delete thumbnail',
         error.statusCode || 500
       );
+    }
+  }
+
+  /**
+   * Generate a YouTube thumbnail with text overlay (Instance method)
+   * 
+   * @param {Object} options - Thumbnail generation options
+   * @returns {Promise<Object>} - Generated thumbnail info
+   */
+  async generateThumbnail(options) {
+    try {
+      console.log('Generating YouTube thumbnail with options:', JSON.stringify({
+        ...options,
+        prompt: options.prompt ? options.prompt.substring(0, 50) + '...' : 'No prompt',
+        userImages: options.userImages ? `${options.userImages.length} images` : 'No user images'
+      }));
+      
+      // Validate dependencies
+      if (!this.stabilityAIService) {
+        throw new ApiError('StabilityAIService not initialized', 500);
+      }
+      if (!this.cloudinaryService) {
+        throw new ApiError('CloudinaryService not initialized', 500);
+      }
+      
+      let imageBuffer;
+      
+      // Check if user has uploaded images
+      if (options.userImages && options.userImages.length > 0) {
+        console.log(`Using ${options.userImages.length} user-uploaded images for thumbnail composition`);
+        
+        // Create a composite image from user uploads
+        imageBuffer = await this.processUserImages(options.userImages, options);
+        console.log(`User image composition complete, buffer size: ${imageBuffer.length} bytes`);
+      } else {
+        // Generate an AI image for the thumbnail
+        console.log('No user images provided, generating AI image');
+        
+        // Create enhanced prompt for thumbnail generation
+        const thumbnailPrompt = this.createThumbnailPrompt(options);
+        console.log('Enhanced prompt:', thumbnailPrompt.substring(0, 100) + '...');
+        
+        const negativePrompt = this.createNegativePrompt(options);
+        console.log('Enhanced negative prompt:', negativePrompt.substring(0, 100) + '...');
+        
+        const imageOptions = {
+          prompt: thumbnailPrompt,
+          negativePrompt: negativePrompt,
+          width: 1280,
+          height: 720,
+          steps: 30,
+          seed: Math.floor(Math.random() * 2147483647),
+          numberOfImages: 1,
+          style: 'photographic',
+          clipGuidancePreset: 'FAST_BLUE',
+          sampler: 'K_DPMPP_2M',
+          cfgScale: 7,
+        };
+        
+        // Generate the image
+        const result = await this.stabilityAIService.generateImage(imageOptions);
+        
+        if (!result || !result.artifacts || result.artifacts.length === 0) {
+          throw new ApiError('Failed to generate AI image for thumbnail', 500);
+        }
+        
+        console.log('Generated image successfully, base64 length:', result.artifacts[0].base64.length);
+        
+        // Convert base64 to buffer
+        const base64Data = result.artifacts[0].base64.replace(/^data:image\/\w+;base64,/, '');
+        imageBuffer = Buffer.from(base64Data, 'base64');
+        console.log('Converted base64 to buffer of size:', imageBuffer.length, 'bytes');
+      }
+      
+      // Ensure imageBuffer is a proper Buffer
+      if (imageBuffer instanceof ArrayBuffer) {
+        console.log('Converting ArrayBuffer to Buffer');
+        imageBuffer = Buffer.from(imageBuffer);
+      }
+      
+      // Add text overlay if text is provided
+      if (options.title) {
+        console.log(`Adding text overlay to image buffer of size: ${imageBuffer.length} bytes, type: ${imageBuffer.constructor.name}`);
+        
+        // Make sure we're working with a proper Buffer
+        if (!Buffer.isBuffer(imageBuffer)) {
+          console.log(`Converting imageBuffer of type ${typeof imageBuffer} to Buffer`);
+          imageBuffer = Buffer.from(imageBuffer);
+        }
+        
+        // Create simple text overlay
+        try {
+          const composition = sharp(imageBuffer)
+            .resize({
+              width: 1280,
+              height: 720,
+              fit: 'cover',
+              position: 'center'
+            });
+            
+          // Return JPEG buffer for now - simplify to isolate the buffer issue
+          imageBuffer = await composition.jpeg().toBuffer();
+          console.log(`Created resized image, new buffer size: ${imageBuffer.length} bytes`);
+        } catch (err) {
+          console.error('Error processing image with Sharp:', err);
+          throw new ApiError(`Failed to process image: ${err.message}`, 500);
+        }
+      }
+      
+      // Upload the final image to Cloudinary
+      console.log('Uploading image to Cloudinary, buffer type:', Buffer.isBuffer(imageBuffer) ? 'Buffer' : imageBuffer.constructor.name);
+      
+      const cloudinaryResult = await this.cloudinaryService.uploadImageBuffer(
+        imageBuffer,
+        'thumbnails'
+      );
+      
+      console.log('Thumbnail uploaded to Cloudinary:', cloudinaryResult.secure_url);
+      
+      return {
+        url: cloudinaryResult.secure_url,
+        publicId: cloudinaryResult.public_id,
+        width: cloudinaryResult.width,
+        height: cloudinaryResult.height,
+      };
+    } catch (error) {
+      console.error('Error generating YouTube thumbnail:', error);
+      throw new ApiError(error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Create a thumbnail prompt based on options
+   * 
+   * @param {Object} options - Thumbnail options
+   * @returns {string} - Enhanced prompt
+   */
+  createThumbnailPrompt(options) {
+    const basePrompt = "high quality, detailed, Design a thumbnail with a minimalist aesthetic and focus on the subject, professional high-quality YouTube thumbnail, Professional business YouTube thumbnail with polished, authoritative presentation, with organized layout, crisp lines, balanced composition, and professional polish";
+    
+    // Add content category specific terms if available
+    let enhancedPrompt = options.prompt || basePrompt;
+    
+    // Add color scheme if specified
+    if (options.colors && options.colors.length > 0) {
+      enhancedPrompt += `, with color scheme featuring ${options.colors.join(', ')}`;
+    }
+    
+    // Add title context if available
+    if (options.title) {
+      enhancedPrompt += `, featuring "${options.title}"`;
+    }
+    
+    // Add category if available
+    if (options.category) {
+      enhancedPrompt += ` related to ${options.category}`;
+    }
+    
+    // Add standard quality terms
+    enhancedPrompt += ", Clean, trustworthy composition with professional elements. Organized layout that conveys expertise and confidence. Professional grade, captivating design, high click-through rate, attention-grabbing. Optimized as a YouTube thumbnail with 1280x720px resolution, high production value, marketable quality., perfect lighting, commercial product photography, studio lighting, professional photography, clean background, high-end advertising, product showcase, detailed fur/feathers, wildlife photography, perfect pose, natural habitat, telephoto lens, detailed thumbnail with, detailed minimalist aesthetic, detailed YouTube thumbnail, masterpiece, photorealistic, 8k";
+    
+    return enhancedPrompt;
+  }
+  
+  /**
+   * Create a negative prompt for thumbnail generation
+   * 
+   * @param {Object} options - Thumbnail options
+   * @returns {string} - Negative prompt
+   */
+  createNegativePrompt(options) {
+    return "unprofessional, messy, childish, overly casual, disorganized, low quality, amateur-looking, poorly designed, cluttered, confusing, hard to read, generic stock photo look, pixelated, low resolution, poor composition, unbalanced layout, cut off, cropped, frame cut, out of frame, poorly framed, bad composition, malformed, unnatural pose, uneven composition, text, watermark, signature, copyright";
+  }
+
+  /**
+   * Process user uploaded images
+   * 
+   * @param {Array} userImages - User uploaded images
+   * @param {Object} options - Processing options
+   * @returns {Promise<Buffer>} - Processed image buffer
+   */
+  async processUserImages(userImages, options) {
+    try {
+      // For now, just use the first image
+      const firstImage = userImages[0];
+      
+      // Handle buffer data - ensure we're working with a Buffer
+      let imageBuffer;
+      
+      if (Buffer.isBuffer(firstImage.buffer)) {
+        imageBuffer = firstImage.buffer;
+      } else if (firstImage.buffer instanceof ArrayBuffer) {
+        imageBuffer = Buffer.from(firstImage.buffer);
+      } else {
+        imageBuffer = Buffer.from(firstImage.buffer || firstImage);
+      }
+      
+      // Resize to thumbnail dimensions
+      const resizedBuffer = await sharp(imageBuffer)
+        .resize({
+          width: 1280,
+          height: 720,
+          fit: 'cover',
+          position: 'center'
+        })
+        .jpeg()
+        .toBuffer();
+        
+      return resizedBuffer;
+    } catch (error) {
+      console.error('Error processing user images:', error);
+      throw new ApiError(`Failed to process user images: ${error.message}`, 500);
     }
   }
 }
