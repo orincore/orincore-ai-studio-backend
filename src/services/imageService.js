@@ -43,6 +43,14 @@ const generateAndStoreImage = async ({
     // Log the resolution being used
     console.log(`Using resolution ${actualResolution} for generation type ${generationType}`);
     
+    // Log prompt to debug
+    console.log(`Original prompt received: "${prompt}"`);
+    
+    // Validate prompt - ensure it's not null or empty
+    if (!prompt || prompt.trim() === '') {
+      throw new ApiError('Prompt is required for image generation', 400);
+    }
+    
     // Calculate credit cost (base cost per image)
     const baseCreditCost = await getCreditCost(generationType, actualResolution, userId);
     
@@ -82,23 +90,26 @@ const generateAndStoreImage = async ({
         imageId
       );
       
+      // Extract parameters from the generation result
+      const params = generationResult.parameters || {};
+      
       // Store image metadata in Supabase
       const { data: storedImage, error } = await supabase
         .from('images')
         .insert({
           id: imageId,
           user_id: userId,
-          prompt: generationResult.prompt,
-          original_prompt: generationResult.originalPrompt,
-          negative_prompt: generationResult.negativePrompt,
-          generation_type: generationResult.generationType,
-          model_id: generationResult.modelId,
-          resolution: generationResult.resolution,
-          width: generationResult.width,
-          height: generationResult.height,
-          cfg_scale: generationResult.cfgScale,
-          steps: generationResult.steps,
-          style,
+          prompt: params.prompt || prompt, // Use the enhanced prompt or fall back to original
+          original_prompt: prompt, // Always store the original prompt
+          negative_prompt: params.negativePrompt || negativePrompt,
+          generation_type: generationType,
+          model_id: params.model || modelId,
+          resolution: actualResolution,
+          width: params.width || RESOLUTIONS[actualResolution].width,
+          height: params.height || RESOLUTIONS[actualResolution].height,
+          cfg_scale: params.cfgScale || cfgScale,
+          steps: params.steps || steps,
+          style: params.style || style,
           seed: image.seed,
           finish_reason: image.finishReason,
           cloudinary_url: cloudinaryResult.secure_url,

@@ -243,6 +243,11 @@ class StabilityAIService {
     numberOfImages = 1
   }) {
     try {
+      // Validate prompt
+      if (!prompt || prompt.trim() === '') {
+        throw new ApiError('Prompt is required for image generation', 400);
+      }
+      
       // Initialize API headers
       const headers = {
         'Content-Type': 'application/json',
@@ -425,6 +430,11 @@ const service = new StabilityAIService();
 
 // Static method that uses the instance method
 const generateImage = async (options) => {
+  // Validate prompt is present
+  if (!options.prompt || options.prompt.trim() === '') {
+    throw new ApiError('Prompt is required for image generation', 400);
+  }
+  
   return service.generateImage(options);
 };
 
