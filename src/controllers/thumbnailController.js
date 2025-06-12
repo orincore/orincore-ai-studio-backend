@@ -80,6 +80,10 @@ class ThumbnailController {
               ? req.files.userAsset 
               : [req.files.userAsset];
           }
+        } else if (req.file) {
+          // Handle single file upload
+          console.log('Single file upload found:', req.file.originalname);
+          userImages = [req.file];
         } else {
           console.log('No files found in request');
         }
@@ -98,7 +102,8 @@ class ThumbnailController {
       const thumbnailService = new ThumbnailService();
       
       // Initialize service dependencies
-      thumbnailService.stabilityAIService = new (require('../services/stabilityAIService'))();
+      const StabilityAIServiceModule = require('../services/stabilityAIService');
+      thumbnailService.stabilityAIService = new StabilityAIServiceModule.StabilityAIService();
       thumbnailService.cloudinaryService = require('../services/cloudinaryService');
       
       // Prepare options for the thumbnail generation

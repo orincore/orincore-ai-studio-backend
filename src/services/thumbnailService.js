@@ -13,6 +13,7 @@ const {
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const axios = require('axios');
+const fs = require('fs');
 
 /**
  * Service for YouTube thumbnail generation
@@ -445,7 +446,7 @@ class ThumbnailService {
   }
 
   /**
-   * Generate a YouTube thumbnail with text overlay (Instance method)
+   * Generate a YouTube thumbnail with text overlay
    * 
    * @param {Object} options - Thumbnail generation options
    * @returns {Promise<Object>} - Generated thumbnail info
@@ -486,11 +487,13 @@ class ThumbnailService {
         const negativePrompt = this.createNegativePrompt(options);
         console.log('Enhanced negative prompt:', negativePrompt.substring(0, 100) + '...');
         
+        // Use one of the allowed dimension combinations for Stability AI
+        // For a 16:9 aspect ratio, 1344x768 is closest to YouTube thumbnail dimensions
         const imageOptions = {
           prompt: thumbnailPrompt,
           negativePrompt: negativePrompt,
-          width: 1280,
-          height: 720,
+          width: 1344,  // Allowed width that's closest to YouTube thumbnail width
+          height: 768,  // Allowed height that maintains approx 16:9 ratio
           steps: 30,
           seed: Math.floor(Math.random() * 2147483647),
           numberOfImages: 1,
@@ -513,6 +516,22 @@ class ThumbnailService {
         const base64Data = result.artifacts[0].base64.replace(/^data:image\/\w+;base64,/, '');
         imageBuffer = Buffer.from(base64Data, 'base64');
         console.log('Converted base64 to buffer of size:', imageBuffer.length, 'bytes');
+        
+        // Resize to standard YouTube thumbnail dimensions (1280x720)
+        try {
+          imageBuffer = await sharp(imageBuffer)
+            .resize({
+              width: 1280,
+              height: 720,
+              fit: 'cover',
+              position: 'center'
+            })
+            .toBuffer();
+          console.log('Resized to standard YouTube thumbnail dimensions (1280x720)');
+        } catch (err) {
+          console.error('Error resizing to YouTube dimensions:', err);
+          // Continue with the original buffer if resize fails
+        }
       }
       
       // Ensure imageBuffer is a proper Buffer
@@ -587,6 +606,8 @@ class ThumbnailService {
     // Add color scheme if specified
     if (options.colors && options.colors.length > 0) {
       enhancedPrompt += `, with color scheme featuring ${options.colors.join(', ')}`;
+    } else if (options.colorPreferences && options.colorPreferences.length > 0) {
+      enhancedPrompt += `, with color scheme featuring ${options.colorPreferences.join(', ')}`;
     }
     
     // Add title context if available
@@ -594,9 +615,11 @@ class ThumbnailService {
       enhancedPrompt += `, featuring "${options.title}"`;
     }
     
-    // Add category if available
+    // Add category if available (handle both naming conventions)
     if (options.category) {
       enhancedPrompt += ` related to ${options.category}`;
+    } else if (options.contentCategory) {
+      enhancedPrompt += ` related to ${options.contentCategory}`;
     }
     
     // Add standard quality terms
@@ -624,21 +647,39 @@ class ThumbnailService {
    */
   async processUserImages(userImages, options) {
     try {
+      console.log(`Processing ${userImages.length} user images`);
+      
       // For now, just use the first image
       const firstImage = userImages[0];
+      
+      // Log image information
+      if (firstImage) {
+        console.log(`Processing image: ${firstImage.originalname || 'unnamed'}, type: ${firstImage.mimetype || 'unknown'}, size: ${firstImage.size || 'unknown'} bytes`);
+      }
       
       // Handle buffer data - ensure we're working with a Buffer
       let imageBuffer;
       
       if (Buffer.isBuffer(firstImage.buffer)) {
         imageBuffer = firstImage.buffer;
+        console.log('Using existing buffer from uploaded file');
       } else if (firstImage.buffer instanceof ArrayBuffer) {
         imageBuffer = Buffer.from(firstImage.buffer);
+        console.log('Converted ArrayBuffer to Buffer');
+      } else if (firstImage.path) {
+        // If the file was saved to disk by multer
+        imageBuffer = fs.readFileSync(firstImage.path);
+        console.log(`Read file from path: ${firstImage.path}`);
       } else {
+        // Handle case where we get a raw buffer or something else
         imageBuffer = Buffer.from(firstImage.buffer || firstImage);
+        console.log(`Created buffer from ${typeof firstImage.buffer || typeof firstImage}`);
       }
       
-      // Resize to thumbnail dimensions
+      console.log(`Image buffer created, size: ${imageBuffer.length} bytes`);
+      
+      // Resize to thumbnail dimensions (YouTube standard)
+      console.log('Resizing image to YouTube thumbnail dimensions (1280x720)');
       const resizedBuffer = await sharp(imageBuffer)
         .resize({
           width: 1280,
@@ -648,7 +689,8 @@ class ThumbnailService {
         })
         .jpeg()
         .toBuffer();
-        
+      
+      console.log(`Resized image buffer size: ${resizedBuffer.length} bytes`);
       return resizedBuffer;
     } catch (error) {
       console.error('Error processing user images:', error);
@@ -657,4 +699,5 @@ class ThumbnailService {
   }
 }
 
+// Export both the class itself and the original static methods
 module.exports = ThumbnailService; 

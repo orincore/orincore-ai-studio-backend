@@ -427,12 +427,16 @@ const generateImage = async (options) => {
   return service.generateImage(options);
 };
 
-module.exports = {
+// Export both the class and static methods to maintain backward compatibility
+const exportedModule = {
   generateImage,
   MODELS,
   RESOLUTIONS,
   STYLES,
   GENERATION_TYPES,
   MODEL_CONFIG,
-  StabilityAIService // Export the class itself for instance usage
-}; 
+  StabilityAIService
+};
+
+// Allow the module to be used as both a class and an object with static methods
+module.exports = Object.assign(exportedModule, { default: StabilityAIService }); 

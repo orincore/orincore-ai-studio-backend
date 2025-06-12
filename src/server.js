@@ -95,4 +95,44 @@ process.on('unhandledRejection', (err) => {
   process.exit(1);
 });
 
+// Add the direct test endpoint (only in development mode)
+if (process.env.NODE_ENV === 'development') {
+  const multer = require('multer');
+  const ThumbnailController = require('./controllers/thumbnailController');
+  
+  console.log('Setting up direct test endpoint for thumbnail generation');
+  
+  // Configure multer for test uploads
+  const testUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 }
+  }).fields([
+    { name: 'userImages', maxCount: 5 },
+    { name: 'userAssets', maxCount: 5 },
+    { name: 'userAsset', maxCount: 1 }
+  ]);
+  
+  // Direct test endpoint that doesn't require auth
+  app.post('/api/test-thumbnail', (req, res, next) => {
+    console.log('Processing direct test thumbnail request...');
+    
+    testUpload(req, res, async (err) => {
+      if (err) {
+        console.error('Upload error:', err.message);
+        return res.status(400).json({ error: err.message });
+      }
+      
+      // Add a fake user for the controller
+      req.user = { id: 'test-user-123' };
+      
+      // Call the controller
+      try {
+        await ThumbnailController.generateThumbnail(req, res, next);
+      } catch (error) {
+        next(error);
+      }
+    });
+  });
+}
+
 module.exports = app; 

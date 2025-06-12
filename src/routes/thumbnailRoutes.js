@@ -1,51 +1,42 @@
 const express = require('express');
 const router = express.Router();
 const ThumbnailController = require('../controllers/thumbnailController');
-const { protect } = require('../middlewares/authMiddleware');
+const { protect, authenticateJWT } = require('../middlewares/authMiddleware');
 const multer = require('multer');
 
-// Configure multer for file uploads
+// Configure multer storage
 const storage = multer.memoryStorage();
+
+// Set up multer for file uploads
 const upload = multer({
   storage,
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB max file size (increased from 10MB)
-    files: 5 // Allow up to 5 files (increased from 4)
+    fileSize: 20 * 1024 * 1024, // 20MB max file size 
+    files: 5 // Allow up to 5 files
   },
   fileFilter: (req, file, cb) => {
-    // Log the incoming file information
-    console.log(`Received file upload: ${file.fieldname}, ${file.originalname}, ${file.mimetype}`);
-    
-    // Accept only image files
+    // Check file types
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      console.log(`Rejected file: ${file.originalname} - not an image (${file.mimetype})`);
-      cb(new Error('Only image files are allowed'), false);
+      cb(new Error('Only image files are allowed!'), false);
     }
   }
 }).fields([
-  { name: 'userAssets', maxCount: 4 },
+  { name: 'userAssets', maxCount: 5 },
   { name: 'userAsset', maxCount: 1 },
-  { name: 'userImages', maxCount: 4 }
+  { name: 'userImages', maxCount: 5 }
 ]);
 
 // Custom error handler for multer errors
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    console.error(`Multer error: ${err.message}, field: ${err.field}`);
     return res.status(400).json({ 
       success: false, 
       message: `File upload error: ${err.message}` 
     });
-  } else if (err) {
-    console.error(`File upload error: ${err.message}`);
-    return res.status(400).json({ 
-      success: false, 
-      message: err.message 
-    });
   }
-  next();
+  next(err);
 };
 
 // Get content categories (public endpoint)
