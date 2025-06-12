@@ -58,26 +58,23 @@ const DEFAULT_MODEL_CONFIG = {
 // Define image resolutions
 const RESOLUTIONS = {
   NORMAL: { width: 512, height: 512 },
-  HD: { width: 768, height: 768 },
+  SQUARE: { width: 1024, height: 1024 },
+  HD: { width: 1024, height: 1024 },
+  PORTRAIT: { width: 640, height: 1024 },
+  LANDSCAPE: { width: 1024, height: 640 },
+  WALLPAPER_HD: { width: 1344, height: 768 },
+  WALLPAPER_4K: { width: 1536, height: 640 },
+  THUMBNAIL_YOUTUBE: { width: 1280, height: 720 },
+  POSTER_PORTRAIT: { width: 1152, height: 896 },
+  POSTER_LANDSCAPE: { width: 1216, height: 832 },
+  RATIO_4_3: { width: 1024, height: 768 },
+  PRODUCT: { width: 1024, height: 1024 },
+  LOGO: { width: 1024, height: 1024 },
   POSTER: { width: 1024, height: 1024 },
   THUMBNAIL: { width: 384, height: 384 },
   WIDE: { width: 768, height: 512 },
   TALL: { width: 512, height: 768 },
-  POSTER_LANDSCAPE: { width: 1280, height: 720 },
-  POSTER_PORTRAIT: { width: 720, height: 1280 },
-  THUMBNAIL_YOUTUBE: { width: 1280, height: 720 },
-  LOGO: { width: 512, height: 512 },
-  PRODUCT: { width: 1024, height: 1024 },
-  // Aspect ratio options
-  SQUARE: { width: 1024, height: 1024 },         // 1:1
-  LANDSCAPE: { width: 1344, height: 768 },       // 16:9
-  PORTRAIT: { width: 768, height: 1344 },        // 9:16
-  WIDESCREEN: { width: 1024, height: 576 },      // 16:9 but smaller
-  RATIO_4_3: { width: 1024, height: 768 },       // 4:3
-  // High-resolution options for wallpapers
-  WALLPAPER_HD: { width: 1920, height: 1080 },   // Full HD 16:9
-  WALLPAPER_4K: { width: 3840, height: 2160 },   // 4K 16:9
-  WALLPAPER_MOBILE: { width: 1080, height: 1920 } // Mobile 9:16
+  WALLPAPER_MOBILE: { width: 1080, height: 1920 }
 };
 
 // Define available style presets

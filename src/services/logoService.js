@@ -59,6 +59,7 @@ class LogoService {
         negativePrompt,
         generationType: 'LOGO',
         modelId: MODELS.STABLE_DIFFUSION_XL,
+        resolution: 'SQUARE', // Explicitly use 1024x1024 resolution supported by SDXL
         cfgScale: 9, // Higher guidance scale for more accurate results
         steps: 50,   // More steps for higher quality
         style: stylePreset,
