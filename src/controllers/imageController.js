@@ -58,6 +58,39 @@ const generateImage = asyncHandler(async (req, res) => {
     if (!validResolutions.includes(resolution)) {
       throw new ApiError(`Invalid resolution. Valid options are: ${validResolutions.join(', ')}`, 400);
     }
+    
+    // Log the selected resolution for debugging
+    console.log(`Client requested resolution: ${resolution} (dimensions: ${RESOLUTIONS[resolution].width}x${RESOLUTIONS[resolution].height})`);
+  }
+  
+  // Handle specific aspect ratio requests
+  if (req.body.aspectRatio) {
+    const aspectRatio = req.body.aspectRatio;
+    // Map common aspect ratio strings to our resolution constants
+    let mappedResolution;
+    
+    switch (aspectRatio) {
+      case '16:9':
+        mappedResolution = 'LANDSCAPE';
+        break;
+      case '9:16':
+        mappedResolution = 'PORTRAIT';
+        break;
+      case '4:3':
+        mappedResolution = 'RATIO_4_3';
+        break;
+      case '1:1':
+        mappedResolution = 'SQUARE';
+        break;
+      default:
+        // If not a standard ratio, keep the resolution as is
+        break;
+    }
+    
+    if (mappedResolution) {
+      console.log(`Mapped aspect ratio ${aspectRatio} to resolution ${mappedResolution}`);
+      resolution = mappedResolution;
+    }
   }
 
   // Validate style if provided
@@ -145,6 +178,15 @@ const removeImage = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getImageOptions = asyncHandler(async (req, res) => {
+  // Helper function to calculate GCD for aspect ratio
+  const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+  
+  // Helper function to format aspect ratio from dimensions
+  const formatAspectRatio = (width, height) => {
+    const divisor = gcd(width, height);
+    return `${width/divisor}:${height/divisor}`;
+  };
+  
   res.status(200).json({
     models: Object.entries(MODELS).map(([key, value]) => ({
       id: value,
@@ -155,7 +197,7 @@ const getImageOptions = asyncHandler(async (req, res) => {
       name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
       width: value.width,
       height: value.height,
-      aspectRatio: `${value.width}:${value.height}`
+      aspectRatio: formatAspectRatio(value.width, value.height)
     })),
     styles: getStylePresets(),
     generationTypes: getGenerationTypes()

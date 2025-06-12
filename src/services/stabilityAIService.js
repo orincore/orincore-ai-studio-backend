@@ -30,12 +30,13 @@ const RESOLUTIONS = {
   THUMBNAIL_YOUTUBE: { width: 1280, height: 720 },
   LOGO: { width: 512, height: 512 },
   PRODUCT: { width: 1024, height: 1024 },
-  // Add aspect ratio options
+  // Aspect ratio options
   SQUARE: { width: 1024, height: 1024 },         // 1:1
   LANDSCAPE: { width: 1344, height: 768 },       // 16:9
   PORTRAIT: { width: 768, height: 1344 },        // 9:16
   WIDESCREEN: { width: 1024, height: 576 },      // 16:9 but smaller
-  // Add high-resolution options for wallpapers
+  RATIO_4_3: { width: 1024, height: 768 },       // 4:3
+  // High-resolution options for wallpapers
   WALLPAPER_HD: { width: 1920, height: 1080 },   // Full HD 16:9
   WALLPAPER_4K: { width: 3840, height: 2160 },   // 4K 16:9
   WALLPAPER_MOBILE: { width: 1080, height: 1920 } // Mobile 9:16
@@ -69,10 +70,10 @@ const GENERATION_TYPES = {
     name: 'Text-to-Image Generator',
     description: 'Generate images from text descriptions',
     defaultModel: MODELS.STABLE_DIFFUSION_XL,
-    defaultResolution: 'SQUARE',
-    promptPrefix: '',
-    promptSuffix: '', 
-    negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry'
+    defaultResolution: 'LANDSCAPE',
+    promptPrefix: 'high quality, detailed, ',
+    promptSuffix: ', masterpiece, photorealistic, 8k', 
+    negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry, amateur, bad proportions, watermark'
   },
   ANIME: {
     name: 'AI Anime Generator',
@@ -222,37 +223,45 @@ const generateImage = async ({
     // For specific styles, enhance the prompt further
     switch (style) {
       case STYLES.REALISTIC:
-        enhancedPrompt = `${enhancedPrompt}, photorealistic, highly detailed, sharp focus, realistic lighting and textures, professional photography`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, cartoon, anime, illustration, drawing, painting, digital art, sketchy, blurry`;
+        enhancedPrompt = `${enhancedPrompt}, photorealistic, highly detailed, sharp focus, realistic lighting and textures, professional photography, masterpiece, 8k`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, cartoon, anime, illustration, drawing, painting, digital art, sketchy, blurry, low quality, deformed`;
         break;
       case STYLES.ANIME:
-        enhancedPrompt = `${enhancedPrompt}, anime style, manga, detailed, 2D, vibrant colors, clean lines, anime illustration, japanese anime style`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, western, photorealistic, 3D, realistic`;
+        enhancedPrompt = `${enhancedPrompt}, anime style, manga, detailed, 2D, vibrant colors, clean lines, anime illustration, japanese anime style, high quality anime`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, western, photorealistic, 3D, realistic, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, blurry, mutated`;
         break;
       case STYLES.CARTOON_STYLE:
-        enhancedPrompt = `${enhancedPrompt}, cartoon style, stylized, bright colors, simple shapes, bold outlines, cheerful, animated`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, detailed, complex, dark, gloomy`;
+        enhancedPrompt = `${enhancedPrompt}, cartoon style, stylized, bright colors, simple shapes, bold outlines, cheerful, animated, clean linework, detailed, high quality`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, detailed, complex, dark, gloomy, noisy, blurry, low quality`;
         break;
       case STYLES.DIGITAL_ART:
-        enhancedPrompt = `${enhancedPrompt}, digital art, vibrant colors, detailed, fantasy, sci-fi, conceptual, polished`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, sketch, rough, physical media`;
+        enhancedPrompt = `${enhancedPrompt}, digital art, vibrant colors, detailed, fantasy, sci-fi, conceptual, polished, masterpiece, trending on artstation, 8k`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, sketch, rough, physical media, blurry, low quality`;
         break;
       case STYLES.FANTASY:
-        enhancedPrompt = `${enhancedPrompt}, fantasy art, magical, ethereal, dreamy, mystical, epic, dramatic lighting, fantasy landscape`;
-        enhancedNegativePrompt = `${enhancedNegativePrompt}, mundane, realistic, photo, photograph, everyday`;
+        enhancedPrompt = `${enhancedPrompt}, fantasy art, magical, ethereal, dreamy, mystical, epic, dramatic lighting, fantasy landscape, detailed, masterpiece`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, mundane, realistic, photo, photograph, everyday, blurry, low quality`;
         break;
     }
   }
 
+  // Make sure we respect user's resolution selection by prioritizing provided resolution over defaults
   const selectedModel = modelId || genType.defaultModel;
   const selectedResolution = resolution || genType.defaultResolution;
 
   try {
-    // Set resolution dimensions
+    // Set resolution dimensions - ensure these match the aspect ratio selection exactly
     const dimensions = RESOLUTIONS[selectedResolution] || RESOLUTIONS.NORMAL;
+    
+    // Log the selected resolution to help with debugging
+    console.log(`Generating image with resolution: ${selectedResolution} (${dimensions.width}x${dimensions.height})`);
 
     // Ensure number of images is between 1 and 4
     const samples = Math.min(Math.max(1, numberOfImages), 4);
+
+    // Increase the default quality settings
+    const effectiveCfgScale = Math.max(cfgScale, 7); // Ensure minimum cfg of 7 for better quality
+    const effectiveSteps = Math.max(steps, 30);     // Ensure minimum steps of 30 for better detail
 
     // Construct the request payload
     const payload = {
@@ -260,12 +269,15 @@ const generateImage = async ({
         { text: enhancedPrompt, weight: 1 },
         ...(enhancedNegativePrompt ? [{ text: enhancedNegativePrompt, weight: -1 }] : [])
       ],
-      cfg_scale: cfgScale,
+      cfg_scale: effectiveCfgScale,
       height: dimensions.height,
       width: dimensions.width,
-      steps: steps,
+      steps: effectiveSteps,
       samples: samples,
-      ...(style && { style_preset: style })
+      ...(style && { style_preset: style }),
+      sampler: "K_DPMPP_2M",  // Use a high-quality sampler
+      clipguidance_preset: "FAST_BLUE", // More refined output
+      seed: 0 // Random seed each time for variety
     };
 
     // Make the API request
@@ -298,8 +310,8 @@ const generateImage = async ({
       resolution: selectedResolution,
       width: dimensions.width,
       height: dimensions.height,
-      cfgScale,
-      steps,
+      cfgScale: effectiveCfgScale,
+      steps: effectiveSteps,
       style,
       timestamp: new Date().toISOString(),
       images: generatedImages

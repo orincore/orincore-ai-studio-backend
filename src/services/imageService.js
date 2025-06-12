@@ -40,6 +40,9 @@ const generateAndStoreImage = async ({
     // Determine the actual resolution to use (either provided or default for generation type)
     const actualResolution = resolution || (GENERATION_TYPES[generationType]?.defaultResolution) || 'NORMAL';
     
+    // Log the resolution being used
+    console.log(`Using resolution ${actualResolution} for generation type ${generationType}`);
+    
     // Calculate credit cost (base cost per image)
     const baseCreditCost = await getCreditCost(generationType, actualResolution, userId);
     
@@ -56,7 +59,7 @@ const generateAndStoreImage = async ({
       negativePrompt,
       generationType,
       modelId,
-      resolution,
+      resolution: actualResolution, // Use the resolved resolution to ensure consistency
       cfgScale,
       steps,
       // If style contains multiple comma-separated values, use the first valid one
