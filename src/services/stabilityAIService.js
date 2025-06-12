@@ -215,7 +215,7 @@ const GENERATION_TYPES = {
 };
 
 /**
- * StabilityAI Service for image generation
+ * Service for interacting with Stability AI API
  */
 class StabilityAIService {
   constructor() {
@@ -224,19 +224,7 @@ class StabilityAIService {
   }
   
   /**
-   * Generate an image using Stability AI
-   * 
-   * @param {Object} options - Generation options
-   * @param {string} options.prompt - The prompt for image generation
-   * @param {string} options.negativePrompt - Optional negative prompt
-   * @param {string} options.generationType - Type of generation (defaults to GENERAL)
-   * @param {string} options.modelId - The model ID to use (optional, will use type default)
-   * @param {string} options.resolution - Resolution type (optional, will use type default)
-   * @param {number} options.cfgScale - CFG scale (default: 7)
-   * @param {number} options.steps - Number of steps (default: 30)
-   * @param {string} options.style - Style preset (optional)
-   * @param {number} options.numberOfImages - Number of images to generate (default: 1)
-   * @returns {Promise<Object>} - Generated image data
+   * Generate an image using Stability AI API
    */
   async generateImage({
     prompt,
@@ -254,127 +242,140 @@ class StabilityAIService {
     seed = 0,
     numberOfImages = 1
   }) {
-    // Validate inputs
-    if (!prompt || prompt.trim() === '') {
-      throw new ApiError('Prompt is required for image generation', 400);
-    }
-
-    if (!this.apiKey) {
-      throw new ApiError('Stability AI API key is not configured', 500);
-    }
-    
-    // Get generation type configuration
-    const genType = GENERATION_TYPES[generationType] || GENERATION_TYPES.GENERAL;
-    
-    // Apply smart prompt enhancement
-    let enhancedPrompt = this.enhancePromptForAccuracy(prompt, style, generationType);
-    
-    // Apply generation-type specifics after the smart enhancement
-    enhancedPrompt = `${genType.promptPrefix}${enhancedPrompt}${genType.promptSuffix}`;
-    
-    // Enhance negative prompt with comprehensive quality and accuracy issues
-    let enhancedNegativePrompt = this.enhanceNegativePrompt(negativePrompt || genType.negativePrompt, style);
-
-    // Apply style-specific prompt enhancements
-    if (style) {
-      // Style-specific enhancements would go here (same logic as before)
-    }
-
-    // Make sure we respect user's resolution selection by prioritizing provided resolution over defaults
-    const selectedModel = modelId || genType.defaultModel;
-    const selectedResolution = resolution || genType.defaultResolution;
-
-    // Get model-specific configuration
-    const modelConfig = MODEL_CONFIG[selectedModel] || DEFAULT_MODEL_CONFIG;
-
-    // Limit prompt length according to model guidelines - this can improve accuracy
-    if (enhancedPrompt.length > modelConfig.maxPromptLength) {
-      console.log(`Warning: Prompt length (${enhancedPrompt.length}) exceeds model maximum (${modelConfig.maxPromptLength}). Truncating.`);
-      enhancedPrompt = enhancedPrompt.substring(0, modelConfig.maxPromptLength);
-    }
-
     try {
-      // Set resolution dimensions - ensure these match the aspect ratio selection exactly
-      const dimensions = width && height ? 
-        { width, height } : 
-        (RESOLUTIONS[selectedResolution] || RESOLUTIONS.NORMAL);
+      // Initialize API headers
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      };
       
-      // Log the selected resolution to help with debugging
-      console.log(`Generating image with resolution: ${dimensions.width}x${dimensions.height}`);
-      console.log(`Enhanced prompt: ${enhancedPrompt}`);
-      console.log(`Enhanced negative prompt: ${enhancedNegativePrompt}`);
-
-      // Ensure number of images is between 1 and 4
-      const samples = Math.min(Math.max(1, numberOfImages), 4);
-
-      // Use model-specific recommended settings
-      const effectiveCfgScale = Math.max(cfgScale, modelConfig.recommendedCfg);
-      const effectiveSteps = Math.max(steps, modelConfig.recommendedSteps);
-
-      // Construct the request payload
+      // Select model based on parameters or defaults
+      const selectedModel = modelId || GENERATION_TYPES[generationType]?.defaultModel || MODELS.STABLE_DIFFUSION_XL;
+      
+      // Determine the resolution dimensions
+      let dimensions = {};
+      
+      if (width && height) {
+        // If width and height are directly specified, use those
+        dimensions = { width, height };
+        console.log(`Using directly specified dimensions: ${width}x${height}`);
+      } else if (resolution && RESOLUTIONS[resolution]) {
+        // If a named resolution is specified, use its dimensions
+        dimensions = { 
+          width: RESOLUTIONS[resolution].width, 
+          height: RESOLUTIONS[resolution].height 
+        };
+        console.log(`Using resolution ${resolution}: ${dimensions.width}x${dimensions.height}`);
+      } else {
+        // Fall back to the default resolution for the generation type
+        const defaultResolution = GENERATION_TYPES[generationType]?.defaultResolution || 'NORMAL';
+        dimensions = { 
+          width: RESOLUTIONS[defaultResolution].width, 
+          height: RESOLUTIONS[defaultResolution].height 
+        };
+        console.log(`Using default resolution ${defaultResolution}: ${dimensions.width}x${dimensions.height}`);
+      }
+      
+      // Enhance the prompt with additional details
+      let enhancedPrompt = enhancePromptForAccuracy(prompt, style, generationType);
+      
+      // Enhance the negative prompt
+      let enhancedNegativePrompt = enhanceNegativePrompt(negativePrompt, style);
+      
+      // Special handling for SDXL Turbo model which requires fewer steps
+      if (selectedModel === MODELS.SDXL_TURBO) {
+        steps = Math.min(steps, 30); // Cap at 30 steps for Turbo
+        console.log(`Using SDXL Turbo model - steps adjusted to ${steps}`);
+      }
+      
+      // Get model-specific configuration
+      const modelConfig = MODEL_CONFIG[selectedModel] || DEFAULT_MODEL_CONFIG;
+      
+      // Create the request payload
       const payload = {
         text_prompts: [
-          { text: enhancedPrompt, weight: 1 },
-          ...(enhancedNegativePrompt ? [{ text: enhancedNegativePrompt, weight: -1 }] : [])
+          {
+            text: enhancedPrompt,
+            weight: 1
+          },
+          {
+            text: enhancedNegativePrompt,
+            weight: -1
+          }
         ],
-        cfg_scale: effectiveCfgScale,
+        cfg_scale: cfgScale,
         height: dimensions.height,
         width: dimensions.width,
-        steps: effectiveSteps,
-        samples: samples,
-        ...(style && { style_preset: style }),
-        sampler: sampler,
-        clipguidance_preset: clipGuidancePreset,
-        seed: seed || Math.floor(Math.random() * 2147483647),
-        
-        // Advanced parameters for improved accuracy
-        guidance_preset: "FAST_GREEN",
-        
-        // Add more weight to the text prompt for SDXL models
-        weight_method: "FAVOR_ORIGINAL_PROMPT"
+        samples: numberOfImages,
+        steps: steps
       };
-
+      
+      // Add engine (model) ID
+      let endpointUrl = `${this.apiUrl}/generation/${selectedModel}/text-to-image`;
+      
+      // Add style preset if specified
+      if (style && style !== 'null' && style !== STYLES.NONE) {
+        payload.style_preset = style;
+        console.log(`Using style preset: ${style}`);
+      }
+      
+      // Add seed if non-zero (for reproducibility)
+      if (seed !== 0) {
+        payload.seed = seed;
+      }
+      
+      // Log the API request for debugging
+      console.log(`Stability AI request to ${endpointUrl}:`);
+      console.log(`Using model: ${selectedModel}`);
+      console.log(`Dimensions: ${dimensions.width}x${dimensions.height}`);
+      console.log(`Enhanced prompt: ${enhancedPrompt.substring(0, 100)}...`);
+      console.log(`Enhanced negative prompt: ${enhancedNegativePrompt.substring(0, 100)}...`);
+      
       // Make the API request
-      const response = await axios({
-        method: 'post',
-        url: `${this.apiUrl}/generation/${selectedModel}/text-to-image`,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: `Bearer ${this.apiKey}`
-        },
-        data: payload,
-        responseType: 'json'
-      });
-
-      // Process the response
+      const response = await axios.post(
+        endpointUrl,
+        payload,
+        { headers }
+      );
+      
+      // Check for successful response
+      if (response.status !== 200) {
+        console.error('Stability AI error:', response.data);
+        throw new ApiError(`Stability AI error: ${response.data.message || 'Unknown error'}`, response.status);
+      }
+      
+      // Extract the generated images
+      const generatedImages = response.data.artifacts.map(artifact => ({
+        base64: artifact.base64,
+        seed: artifact.seed,
+        finishReason: artifact.finishReason
+      }));
+      
       return {
-        id: uuidv4(),
-        prompt: enhancedPrompt,
-        originalPrompt: prompt,
-        negativePrompt: enhancedNegativePrompt,
-        generationType,
-        modelId: selectedModel,
-        resolution: selectedResolution,
-        width: dimensions.width,
-        height: dimensions.height,
-        cfgScale: effectiveCfgScale,
-        steps: effectiveSteps,
-        style,
-        timestamp: new Date().toISOString(),
-        artifacts: response.data.artifacts
+        success: true,
+        images: generatedImages,
+        parameters: {
+          prompt: enhancedPrompt,
+          negativePrompt: enhancedNegativePrompt,
+          model: selectedModel,
+          width: dimensions.width,
+          height: dimensions.height,
+          steps,
+          cfgScale,
+          style
+        }
       };
+      
     } catch (error) {
       console.error('Stability AI generation error:', error.response?.data || error.message);
       
-      if (error.response) {
-        throw new ApiError(
-          `Stability AI error: ${error.response.data?.message || 'Failed to generate image'}`,
-          error.response.status || 500
-        );
+      // Format errors from the Stability API
+      if (error.response?.data) {
+        throw new ApiError(`Stability AI error: ${error.response.data.message || JSON.stringify(error.response.data)}`, error.response.status || 500);
       }
       
-      throw new ApiError('Failed to generate image: ' + error.message, 500);
+      throw new ApiError(`Error generating image: ${error.message}`, 500);
     }
   }
 
@@ -427,16 +428,155 @@ const generateImage = async (options) => {
   return service.generateImage(options);
 };
 
-// Export both the class and static methods to maintain backward compatibility
-const exportedModule = {
-  generateImage,
+// Move these functions before the module exports
+const getSuggestedStyles = (prompt) => {
+  // Implementation of style suggestions based on prompt content
+  const promptLower = prompt.toLowerCase();
+  
+  // Style suggestion logic
+  const suggestions = [];
+  
+  // Check for anime/manga keywords
+  if (/anime|manga|japanese animation|otaku|kawaii/i.test(promptLower)) {
+    suggestions.push(STYLES.ANIME);
+  }
+  
+  // Check for realistic/photo keywords
+  if (/realistic|photo|portrait|photograph|camera|dslr|photoshoot/i.test(promptLower)) {
+    suggestions.push(STYLES.REALISTIC);
+  }
+  
+  // Check for digital art keywords
+  if (/digital art|digital painting|concept art|illustration|digital illustration/i.test(promptLower)) {
+    suggestions.push(STYLES.DIGITAL_ART);
+  }
+  
+  // Check for fantasy keywords
+  if (/fantasy|magical|dragon|wizard|sorceress|elf|dwarf|orc|mythical|mystical/i.test(promptLower)) {
+    suggestions.push(STYLES.FANTASY);
+  }
+  
+  // Check for comic book keywords
+  if (/comic|superhero|marvel|dc|panel|graphic novel|superhero/i.test(promptLower)) {
+    suggestions.push(STYLES.COMICS);
+  }
+  
+  // Check for 3D model keywords
+  if (/3d|3d model|3d render|blender|maya|cinema 4d|3d printed|3d sculpture/i.test(promptLower)) {
+    suggestions.push(STYLES.THREE_D);
+  }
+  
+  // Check for pixel art keywords
+  if (/pixel|8-bit|16-bit|retro game|gameboy|nes|snes|arcade/i.test(promptLower)) {
+    suggestions.push(STYLES.PIXEL_ART);
+  }
+  
+  // Check for cinematic keywords
+  if (/cinematic|movie|film|hollywood|widescreen|trailer|scene from|blockbuster/i.test(promptLower)) {
+    suggestions.push(STYLES.CINEMATIC);
+  }
+  
+  // Check for origami keywords
+  if (/origami|paper|folded|paper art|paper craft|folding/i.test(promptLower)) {
+    suggestions.push(STYLES.ORIGAMI);
+  }
+  
+  // Check for line art keywords
+  if (/line art|sketch|drawing|contour|outline|pen and ink|minimal lines/i.test(promptLower)) {
+    suggestions.push(STYLES.LINE_ART);
+  }
+  
+  // Always add "enhance" as a safe fallback option
+  if (!suggestions.includes(STYLES.ENHANCE)) {
+    suggestions.push(STYLES.ENHANCE);
+  }
+  
+  // Limit to a reasonable number of suggestions
+  return suggestions.slice(0, 5);
+};
+
+// Helper function to enhance prompt based on generation type
+const enhancePromptForAccuracy = (prompt, style, generationType = 'GENERAL') => {
+  // Get generation type config
+  const genType = GENERATION_TYPES[generationType] || GENERATION_TYPES.GENERAL;
+  
+  // Start with the generation type's prefix
+  let enhancedPrompt = genType.promptPrefix || '';
+  
+  // Add the user's prompt
+  enhancedPrompt += prompt;
+  
+  // Add generation type's suffix
+  if (genType.promptSuffix) {
+    enhancedPrompt += genType.promptSuffix;
+  }
+  
+  return enhancedPrompt.trim();
+};
+
+// Helper function to enhance negative prompt
+const enhanceNegativePrompt = (negativePrompt, style) => {
+  // Start with user's negative prompt if provided
+  let enhancedNegativePrompt = negativePrompt ? negativePrompt + ', ' : '';
+  
+  // Add common negative terms that apply to most generations
+  enhancedNegativePrompt += 'ugly, deformed, disfigured, poor quality, low quality, blurry';
+  
+  // Add style-specific negative terms if applicable
+  if (style === STYLES.REALISTIC) {
+    enhancedNegativePrompt += ', cartoon, anime, illustration, drawing, painting, artificial';
+  } else if (style === STYLES.ANIME) {
+    enhancedNegativePrompt += ', photorealistic, photograph, western style, 3d render';
+  }
+  
+  return enhancedNegativePrompt;
+};
+
+// Helper function to get all style presets with their details
+const getStylePresets = () => {
+  return [
+    { id: STYLES.NONE, name: 'None (Default)', description: 'No specific style applied' },
+    { id: STYLES.REALISTIC, name: 'Photographic', description: 'Realistic photo-like images' },
+    { id: STYLES.ANIME, name: 'Anime', description: 'Japanese anime style illustrations' },
+    { id: STYLES.CARTOON_STYLE, name: 'Cartoon', description: 'Cartoon style digital art' },
+    { id: STYLES.DIGITAL_ART, name: 'Digital Art', description: 'Computer-generated artwork' },
+    { id: STYLES.FANTASY, name: 'Fantasy Art', description: 'Magical and fantastical scenes' },
+    { id: STYLES.COMICS, name: 'Comic Book', description: 'Comic book style illustrations' },
+    { id: STYLES.CINEMATIC, name: 'Cinematic', description: 'Movie-like visuals with dramatic lighting' },
+    { id: STYLES.THREE_D, name: '3D Model', description: '3D rendered objects and scenes' },
+    { id: STYLES.PIXEL_ART, name: 'Pixel Art', description: 'Retro pixel-based artwork' },
+    { id: STYLES.ORIGAMI, name: 'Origami', description: 'Paper folding art style' },
+    { id: STYLES.LINE_ART, name: 'Line Art', description: 'Simple line-based illustrations' },
+    { id: STYLES.ENHANCE, name: 'Enhanced', description: 'Improved detail and quality' },
+    { id: STYLES.NEON_PUNK, name: 'Neon Punk', description: 'Cyberpunk style with neon elements' },
+    { id: STYLES.ISOMETRIC, name: 'Isometric', description: 'Geometric perspective graphics' },
+    { id: STYLES.LOW_POLY, name: 'Low Poly', description: 'Simplified geometric 3D style' },
+    { id: STYLES.MODELING_COMPOUND, name: 'Clay/Modeling Compound', description: 'Clay-like textures and shapes' },
+    { id: STYLES.TILE_TEXTURE, name: 'Tile Texture', description: 'Repeating pattern designs' }
+  ].filter(style => style.id !== undefined); // Filter out any undefined styles
+};
+
+// Helper function to get generation types
+const getGenerationTypes = () => {
+  return Object.entries(GENERATION_TYPES).map(([key, value]) => ({
+    id: key,
+    name: value.name,
+    description: value.description
+  }));
+};
+
+// Create module exports with all required functions and constants
+module.exports = {
   MODELS,
   RESOLUTIONS,
   STYLES,
   GENERATION_TYPES,
   MODEL_CONFIG,
-  StabilityAIService
-};
-
-// Allow the module to be used as both a class and an object with static methods
-module.exports = Object.assign(exportedModule, { default: StabilityAIService }); 
+  StabilityAIService,
+  generateImage,
+  getGenerationTypes,
+  getStylePresets,
+  getSuggestedStyles,
+  enhancePromptForAccuracy,
+  enhanceNegativePrompt
+}; 
