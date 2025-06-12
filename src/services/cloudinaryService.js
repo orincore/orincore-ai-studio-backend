@@ -37,6 +37,9 @@ class CloudinaryService {
    */
   static async uploadImageBuffer(imageBuffer, folder, publicId = null) {
     try {
+      // Handle case where imageBuffer is a multer file object
+      const buffer = imageBuffer.buffer ? imageBuffer.buffer : imageBuffer;
+      
       // Create a promise to handle the upload
       return new Promise((resolve, reject) => {
         // Set up the stream
@@ -59,7 +62,7 @@ class CloudinaryService {
         );
         
         // Write the buffer to the stream
-        uploadStream.end(imageBuffer);
+        uploadStream.end(buffer);
       });
     } catch (error) {
       console.error('Error uploading image buffer to Cloudinary:', error);

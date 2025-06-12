@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 class AssetProcessingService {
   /**
    * Process a user-uploaded image for use in generation
-   * @param {Buffer} imageBuffer - The image buffer
+   * @param {Buffer|Object} imageBuffer - The image buffer or Multer file object
    * @param {string} originalFilename - Original filename
    * @param {string} userId - User ID
    * @param {Object} options - Processing options
@@ -32,11 +32,14 @@ class AssetProcessingService {
     } = {}
   ) {
     try {
+      // Handle case where input might be a multer file object
+      const buffer = imageBuffer.buffer ? imageBuffer.buffer : imageBuffer;
+      
       // Get image metadata
-      const metadata = await sharp(imageBuffer).metadata();
+      const metadata = await sharp(buffer).metadata();
       
       // Create image processor
-      let processor = sharp(imageBuffer);
+      let processor = sharp(buffer);
       
       // Resize if needed while maintaining aspect ratio
       if (metadata.width > maxWidth || metadata.height > maxHeight) {
@@ -63,7 +66,7 @@ class AssetProcessingService {
       
       // Upload to Cloudinary
       const cloudinaryFolder = `orincore-ai-studio/${userId}/assets/${assetType}`;
-      const fileExtension = path.extname(originalFilename).toLowerCase();
+      const fileExtension = path.extname(originalFilename).toLowerCase() || '.jpg';
       
       const cloudinaryResult = await uploadImage(
         processedBuffer,

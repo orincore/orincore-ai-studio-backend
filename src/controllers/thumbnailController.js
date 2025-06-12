@@ -33,21 +33,36 @@ class ThumbnailController {
         throw new ApiError('Title is required', 400);
       }
       
+      console.log('Request files:', req.files ? Object.keys(req.files).join(', ') : 'none');
+      
       // Check for user assets (multiple image uploads)
       let userAssets = [];
-      if (req.files && req.files.userAssets) {
-        // Handle array of files
-        userAssets = Array.isArray(req.files.userAssets) 
-          ? req.files.userAssets 
-          : [req.files.userAssets];
-      }
       
-      // For backward compatibility, also check for single userAsset
-      if (req.files && req.files.userAsset && userAssets.length === 0) {
-        userAssets = [req.files.userAsset[0]];
+      try {
+        if (req.files && req.files.userAssets) {
+          // Handle array of files
+          userAssets = Array.isArray(req.files.userAssets) 
+            ? req.files.userAssets 
+            : [req.files.userAssets];
+        }
+        
+        // For backward compatibility, also check for single userAsset
+        if (req.files && req.files.userAsset && userAssets.length === 0) {
+          userAssets = Array.isArray(req.files.userAsset) 
+            ? req.files.userAsset 
+            : [req.files.userAsset];
+        }
+      } catch (error) {
+        console.error('Error processing file uploads:', error);
+        // Continue without user assets if there's an error
       }
       
       console.log(`Generating professional thumbnail with ${userAssets.length} user images and useAI=${useAI}`);
+      console.log(`Available file upload fields: ${req.files ? Object.keys(req.files).join(', ') : 'none'}`);
+      
+      if (userAssets.length > 0) {
+        console.log(`First image details: ${userAssets[0].originalname}, ${userAssets[0].mimetype}, ${userAssets[0].size} bytes`);
+      }
       
       // Generate thumbnail
       const result = await ThumbnailService.generateThumbnail(userId, {

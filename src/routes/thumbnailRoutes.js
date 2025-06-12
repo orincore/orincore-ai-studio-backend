@@ -10,7 +10,7 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max file size
-    files: 1 // Maximum 1 file
+    files: 4 // Maximum 4 files (increased from 1)
   },
   fileFilter: (req, file, cb) => {
     // Accept only image files
@@ -34,7 +34,10 @@ router.use(protect);
 // Generate a YouTube thumbnail
 router.post(
   '/generate',
-  upload.fields([{ name: 'userAsset', maxCount: 1 }]),
+  upload.fields([
+    { name: 'userAssets', maxCount: 4 },
+    { name: 'userAsset', maxCount: 1 } // Keep for backward compatibility
+  ]),
   ThumbnailController.generateThumbnail
 );
 

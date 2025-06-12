@@ -12,6 +12,7 @@ const {
 } = require('../utils/thumbnailUtils');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
+const axios = require('axios');
 
 /**
  * Service for YouTube thumbnail generation
@@ -55,8 +56,8 @@ class ThumbnailService {
         processedAssets = await Promise.all(
           userAssets.map(asset => 
             AssetProcessingService.processUserImage(
-              asset.buffer,
-              asset.originalname,
+              asset.buffer || asset, // Handle both multer file objects and raw buffers
+              asset.originalname || 'image.jpg',
               userId,
               {
                 maxWidth: 1200,
@@ -230,9 +231,8 @@ class ThumbnailService {
         baseImageBuffer = Buffer.from(aiImage.base64, 'base64');
       } else if (assets.length > 0) {
         // Download the first asset to use as background
-        const response = await fetch(assets[0].url);
-        baseImageBuffer = await response.arrayBuffer();
-        baseImageBuffer = Buffer.from(baseImageBuffer);
+        const response = await axios.get(assets[0].url, { responseType: 'arraybuffer' });
+        baseImageBuffer = Buffer.from(response.data);
       } else {
         throw new ApiError('No base image available for composition', 500);
       }
@@ -256,8 +256,8 @@ class ThumbnailService {
           const asset = assets[i];
           
           // Download the asset
-          const response = await fetch(asset.url);
-          const assetBuffer = await response.arrayBuffer();
+          const response = await axios.get(asset.url, { responseType: 'arraybuffer' });
+          const assetBuffer = Buffer.from(response.data);
           
           // Determine position based on number of assets
           let position;
@@ -286,7 +286,7 @@ class ThumbnailService {
           const maxHeight = Math.floor(thumbnailParams.resolution.height * 0.4);
           
           // Create a Sharp instance for the asset
-          const processedAsset = await sharp(Buffer.from(assetBuffer))
+          const processedAsset = await sharp(assetBuffer)
             .resize(maxWidth, maxHeight, {
               fit: 'inside',
               withoutEnlargement: true
