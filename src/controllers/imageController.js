@@ -12,7 +12,9 @@ const {
   GENERATION_TYPES, 
   getGenerationTypes,
   getStylePresets,
-  getSuggestedStyles
+  getSuggestedStyles,
+  enhancePromptForAccuracy,
+  enhanceNegativePrompt
 } = require('../services/stabilityAIService');
 const { ApiError } = require('../middlewares/errorMiddleware');
 

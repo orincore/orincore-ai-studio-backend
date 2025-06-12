@@ -80,6 +80,12 @@ app.use(errorHandler);
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  console.log(`Enhanced image generation features active - supports multiple aspect ratios and improved accuracy`);
+  console.log(`Available endpoints: 
+  - POST /api/images/generate - Generate images with enhanced accuracy
+  - POST /api/images/analyze-prompt - Get prompt improvement suggestions
+  - POST /api/images/suggest-styles - Get style suggestions for prompts
+  - GET /api/images/options - Get all available models, resolutions and styles`);
 });
 
 // Handle unhandled promise rejections
