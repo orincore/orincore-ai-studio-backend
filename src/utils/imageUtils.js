@@ -37,7 +37,16 @@ const getGenerationCostMultiplier = (generationType, resolution) => {
     POSTER_PORTRAIT: 2.0,
     THUMBNAIL_YOUTUBE: 1.0,
     LOGO: 0.8,
-    PRODUCT: 1.5
+    PRODUCT: 1.5,
+    // Aspect ratio options
+    SQUARE: 2.0,       // High resolution 1:1
+    LANDSCAPE: 2.0,    // High resolution 16:9
+    PORTRAIT: 2.0,     // High resolution 9:16
+    WIDESCREEN: 1.2,   // Standard resolution 16:9
+    // Wallpaper options
+    WALLPAPER_HD: 3.0,      // Full HD 16:9
+    WALLPAPER_4K: 5.0,      // 4K 16:9
+    WALLPAPER_MOBILE: 3.0   // Mobile 9:16
   };
 
   const typeMultiplier = typeCosts[generationType] || 1.0;

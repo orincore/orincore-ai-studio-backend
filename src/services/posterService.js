@@ -104,20 +104,8 @@ class PosterService {
       // 4. Get optimal resolution based on aspect ratio
       const resolution = getPosterResolution(aspectRatio, customDimensions);
       
-      // 5. Calculate credit cost based on resolution
-      let creditCost = 5; // Base cost
-      
-      // Add cost for higher resolutions
-      if (resolution.width * resolution.height > 5000000) { // > 5MP
-        creditCost += 3;
-      } else if (resolution.width * resolution.height > 2500000) { // > 2.5MP
-        creditCost += 1;
-      }
-      
-      // Add cost for user assets
-      if (processedLogo || processedProductImage) {
-        creditCost += 1;
-      }
+      // 5. Calculate credit cost - fixed cost for posters
+      const creditCost = 50; // Fixed cost for posters
       
       // 6. Check and deduct user credits
       await CreditService.checkAndDeductCredits(userId, creditCost);
@@ -187,7 +175,7 @@ class PosterService {
       if (error.message !== 'Insufficient credits' && error.message !== 'Failed to check or deduct credits') {
         try {
           // Attempt to refund credits
-          await CreditService.refundCredits(userId, 5); // Refund the base cost
+          await CreditService.refundCredits(userId, 50); // Refund the full cost
         } catch (refundError) {
           console.error('Error refunding credits:', refundError);
         }

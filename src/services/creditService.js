@@ -3,18 +3,36 @@ const { ApiError } = require('../middlewares/errorMiddleware');
 const { v4: uuidv4 } = require('uuid');
 const { getGenerationCostMultiplier } = require('../utils/imageUtils');
 
-// Credit costs for different image types from environment variables
+// Credit costs for different image types (fixed values as per requirements)
 const CREDIT_COSTS = {
-  NORMAL: parseInt(process.env.NORMAL_IMAGE_CREDIT_COST) || 1,
-  HD: parseInt(process.env.HD_IMAGE_CREDIT_COST) || 2,
-  POSTER: parseInt(process.env.POSTER_IMAGE_CREDIT_COST) || 4,
-  THUMBNAIL: parseInt(process.env.THUMBNAIL_IMAGE_CREDIT_COST) || 1,
-  WIDE: parseInt(process.env.NORMAL_IMAGE_CREDIT_COST) || 1,
-  TALL: parseInt(process.env.NORMAL_IMAGE_CREDIT_COST) || 1
+  // Basic image generation costs are handled by generation type
+  NORMAL: 10,
+  HD: 10,
+  POSTER: 50,
+  THUMBNAIL: 50,
+  WIDE: 10,
+  TALL: 10,
+  // Aspect ratio options
+  SQUARE: 10,
+  LANDSCAPE: 10,
+  PORTRAIT: 10,
+  WIDESCREEN: 10
+};
+
+// Generation type fixed costs (overrides the multiplier-based costs)
+const GENERATION_TYPE_COSTS = {
+  GENERAL: 10,     // Text-to-Image Generator
+  ANIME: 10,       // Anime Generator
+  REALISTIC: 10,   // Realistic Generator
+  LOGO: 25,        // Logo Maker
+  POSTER: 50,      // Poster Creator
+  THUMBNAIL: 50,   // Thumbnail Creator
+  WALLPAPER: 50,   // Wallpaper Generator (new)
+  IMAGE_TO_IMAGE: 10 // Image-to-Image Generator (new)
 };
 
 // Default free credits for new users
-const DEFAULT_FREE_CREDITS = parseInt(process.env.DEFAULT_FREE_CREDITS) || 10;
+const DEFAULT_FREE_CREDITS = 10; // We'll use the free generation mechanism instead of giving free credits
 
 /**
  * Get a user's current credit balance
@@ -169,15 +187,52 @@ const deductCredits = async (userId, credits, reason, referenceId = null) => {
 };
 
 /**
+ * Check if user has a free generation remaining
+ * @param {string} userId - The user ID
+ * @returns {Promise<boolean>} - Whether the user has a free generation
+ */
+const hasUserUsedFreeGeneration = async (userId) => {
+  try {
+    // Check if user has any previous generations
+    const { count, error } = await supabase
+      .from('images')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Error checking free generation:', error);
+      return true; // Assume used on error
+    }
+    
+    return count > 0;
+  } catch (error) {
+    console.error('Error checking free generation:', error);
+    return true; // Assume used on error
+  }
+};
+
+/**
  * Get the credit cost for a specific image generation
  * @param {string} generationType - The type of generation (e.g., 'GENERAL', 'ANIME', 'POSTER')
  * @param {string} resolution - The resolution to use (e.g., 'NORMAL', 'HD', 'POSTER')
- * @returns {number} - The credit cost
+ * @param {string} userId - The user ID for checking free generation
+ * @returns {Promise<number>} - The credit cost
  */
-const getCreditCost = (generationType, resolution) => {
-  const baseCost = CREDIT_COSTS[resolution.toUpperCase()] || CREDIT_COSTS.NORMAL;
-  const multiplier = getGenerationCostMultiplier(generationType, resolution);
-  return Math.ceil(baseCost * multiplier);
+const getCreditCost = async (generationType, resolution, userId) => {
+  // Check if this is the user's first generation
+  const hasUsedFree = await hasUserUsedFreeGeneration(userId);
+  
+  if (!hasUsedFree) {
+    return 0; // First generation is free
+  }
+  
+  // Use fixed cost by generation type if available
+  if (GENERATION_TYPE_COSTS[generationType]) {
+    return GENERATION_TYPE_COSTS[generationType];
+  }
+  
+  // Fall back to resolution-based cost
+  return CREDIT_COSTS[resolution.toUpperCase()] || CREDIT_COSTS.NORMAL;
 };
 
 /**
@@ -239,13 +294,70 @@ const getCreditHistory = async (userId, { page = 1, limit = 20, type = null } = 
   }
 };
 
+/**
+ * Check credit balance and deduct credits if sufficient
+ * @param {string} userId - The user ID
+ * @param {number} credits - The number of credits to deduct
+ * @param {string} reason - The reason for deduction (e.g., 'poster_generation')
+ * @param {string} referenceId - Optional reference ID (e.g., generation ID)
+ * @returns {Promise<Object>} - Updated user data
+ */
+const checkAndDeductCredits = async (userId, credits, reason = 'generation', referenceId = null) => {
+  try {
+    // Check if this is the user's first generation
+    const hasUsedFree = await hasUserUsedFreeGeneration(userId);
+    
+    if (!hasUsedFree) {
+      return { creditBalance: await getUserCredits(userId), freeGeneration: true };
+    }
+    
+    // Get the user's current balance
+    const currentBalance = await getUserCredits(userId);
+    
+    // Check if the user has enough credits
+    if (currentBalance < credits) {
+      throw new ApiError('Insufficient credits', 402);
+    }
+    
+    // Deduct the credits
+    return await deductCredits(userId, credits, reason, referenceId);
+  } catch (error) {
+    console.error('Error checking and deducting credits:', error);
+    throw error instanceof ApiError 
+      ? error 
+      : new ApiError('Failed to check or deduct credits', 500);
+  }
+};
+
+/**
+ * Refund credits in case of a failed generation
+ * @param {string} userId - The user ID
+ * @param {number} credits - The number of credits to refund
+ * @param {string} reason - The reason for refund (default: 'generation_failed')
+ * @returns {Promise<Object>} - Updated user data
+ */
+const refundCredits = async (userId, credits, reason = 'generation_failed') => {
+  try {
+    return await addCredits(userId, credits, reason);
+  } catch (error) {
+    console.error('Error refunding credits:', error);
+    throw error instanceof ApiError 
+      ? error 
+      : new ApiError('Failed to refund credits', 500);
+  }
+};
+
 module.exports = {
   getUserCredits,
   addCredits,
   deductCredits,
   getCreditCost,
+  checkAndDeductCredits,
+  refundCredits,
   initializeUserCredits,
   getCreditHistory,
+  hasUserUsedFreeGeneration,
   CREDIT_COSTS,
+  GENERATION_TYPE_COSTS,
   DEFAULT_FREE_CREDITS
 }; 

@@ -4,7 +4,8 @@ const {
   getImages,
   getImage,
   removeImage,
-  getImageOptions
+  getImageOptions,
+  suggestStyles
 } = require('../controllers/imageController');
 const { protect } = require('../middlewares/authMiddleware');
 
@@ -14,6 +15,7 @@ const router = express.Router();
 router.use(protect);
 
 router.post('/generate', generateImage);
+router.post('/suggest-styles', suggestStyles);
 router.get('/', getImages);
 router.get('/options', getImageOptions);
 router.get('/:id', getImage);

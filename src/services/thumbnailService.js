@@ -72,8 +72,8 @@ class ThumbnailService {
       // 4. Get thumbnail parameters
       const thumbnailParams = getThumbnailParameters(contentCategory);
       
-      // 5. Calculate credit cost - YouTube thumbnails are standard resolution
-      const creditCost = 3; // Fixed cost for YouTube thumbnails
+      // 5. Calculate credit cost - YouTube thumbnails are fixed cost
+      const creditCost = 50; // Fixed cost for YouTube thumbnails
       
       // 6. Check and deduct user credits
       await CreditService.checkAndDeductCredits(userId, creditCost);
@@ -138,7 +138,7 @@ class ThumbnailService {
       // Refund credits if the generation failed after deduction
       if (error.message !== 'Insufficient credits' && error.message !== 'Failed to check or deduct credits') {
         try {
-          await CreditService.refundCredits(userId, 3); // Refund the standard cost
+          await CreditService.refundCredits(userId, 50); // Refund the standard cost
         } catch (refundError) {
           console.error('Error refunding credits:', refundError);
         }

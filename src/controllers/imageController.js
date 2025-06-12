@@ -5,7 +5,15 @@ const {
   getImageById, 
   deleteImage 
 } = require('../services/imageService');
-const { MODELS, RESOLUTIONS, GENERATION_TYPES, getGenerationTypes } = require('../services/stabilityAIService');
+const { 
+  MODELS, 
+  RESOLUTIONS, 
+  STYLES,
+  GENERATION_TYPES, 
+  getGenerationTypes,
+  getStylePresets,
+  getSuggestedStyles
+} = require('../services/stabilityAIService');
 const { ApiError } = require('../middlewares/errorMiddleware');
 
 /**
@@ -20,9 +28,10 @@ const generateImage = asyncHandler(async (req, res) => {
     generationType = 'GENERAL',
     modelId, 
     resolution, 
-    cfgScale, 
-    steps, 
-    style 
+    cfgScale = 7, 
+    steps = 30, 
+    style,
+    numberOfImages = 1
   } = req.body;
   
   // Validate prompt
@@ -50,6 +59,32 @@ const generateImage = asyncHandler(async (req, res) => {
       throw new ApiError(`Invalid resolution. Valid options are: ${validResolutions.join(', ')}`, 400);
     }
   }
+
+  // Validate style if provided
+  if (style) {
+    // Handle both single style and comma-separated style list (will use the first valid style)
+    const requestedStyles = style.split(',').map(s => s.trim());
+    
+    const validStyles = Object.values(STYLES);
+    let validStyleFound = false;
+    
+    for (const requestedStyle of requestedStyles) {
+      if (validStyles.includes(requestedStyle) || requestedStyle === 'null') {
+        validStyleFound = true;
+        break;
+      }
+    }
+    
+    if (!validStyleFound) {
+      throw new ApiError(`Invalid style. Valid options are: ${validStyles.filter(s => s !== null).join(', ')}`, 400);
+    }
+  }
+
+  // Validate number of images
+  const numImages = parseInt(numberOfImages);
+  if (isNaN(numImages) || numImages < 1 || numImages > 4) {
+    throw new ApiError('Number of images must be between 1 and 4', 400);
+  }
   
   // Generate the image
   const result = await generateAndStoreImage({
@@ -61,6 +96,7 @@ const generateImage = asyncHandler(async (req, res) => {
     cfgScale,
     steps,
     style,
+    numberOfImages: numImages,
     userId: req.user.id
   });
   
@@ -118,9 +154,36 @@ const getImageOptions = asyncHandler(async (req, res) => {
       id: key,
       name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
       width: value.width,
-      height: value.height
+      height: value.height,
+      aspectRatio: `${value.width}:${value.height}`
     })),
+    styles: getStylePresets(),
     generationTypes: getGenerationTypes()
+  });
+});
+
+/**
+ * @desc    Get style suggestions based on a prompt
+ * @route   POST /api/images/suggest-styles
+ * @access  Private
+ */
+const suggestStyles = asyncHandler(async (req, res) => {
+  const { prompt } = req.body;
+  
+  if (!prompt) {
+    throw new ApiError('Prompt is required', 400);
+  }
+  
+  const suggestedStyles = getSuggestedStyles(prompt);
+  
+  // Get the full style details from getStylePresets for each suggested style
+  const allStylePresets = getStylePresets();
+  const styleDetails = suggestedStyles.map(styleId => {
+    return allStylePresets.find(style => style.id === styleId) || null;
+  }).filter(Boolean);
+  
+  res.status(200).json({
+    suggestedStyles: styleDetails
   });
 });
 
@@ -129,5 +192,6 @@ module.exports = {
   getImages,
   getImage,
   removeImage,
-  getImageOptions
+  getImageOptions,
+  suggestStyles
 }; 

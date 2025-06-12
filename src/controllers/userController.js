@@ -3,7 +3,8 @@ const {
   getUserById, 
   updateUserProfile, 
   getAllUsers, 
-  setUserRole 
+  setUserRole,
+  getUserFullProfileData
 } = require('../services/userService');
 const { 
   getUserCredits,
@@ -19,7 +20,10 @@ const { ApiError } = require('../middlewares/errorMiddleware');
 const getCurrentUser = asyncHandler(async (req, res) => {
   const user = await getUserById(req.user.id);
   
-  res.status(200).json(user);
+  res.status(200).json({
+    success: true,
+    data: user
+  });
 });
 
 /**
@@ -36,7 +40,10 @@ const updateProfile = asyncHandler(async (req, res) => {
     'country_code', 
     'currency', 
     'timezone', 
-    'language'
+    'language',
+    'bio',
+    'website',
+    'phone_number'
   ];
   
   const updateData = {};
@@ -52,7 +59,11 @@ const updateProfile = asyncHandler(async (req, res) => {
   
   const updatedUser = await updateUserProfile(req.user.id, updateData);
   
-  res.status(200).json(updatedUser);
+  res.status(200).json({
+    success: true,
+    message: 'Profile updated successfully',
+    data: updatedUser
+  });
 });
 
 /**
@@ -124,6 +135,60 @@ const updateUserRole = asyncHandler(async (req, res) => {
   res.status(200).json(updatedUser);
 });
 
+/**
+ * @desc    Get user's full profile with detailed information
+ * @route   GET /api/users/me/full-profile
+ * @access  Private
+ */
+const getUserFullProfile = asyncHandler(async (req, res) => {
+  const userProfile = await getUserFullProfileData(req.user.id);
+  
+  res.status(200).json({
+    success: true,
+    data: userProfile
+  });
+});
+
+/**
+ * @desc    Update user account settings
+ * @route   PATCH /api/users/me/account-settings
+ * @access  Private
+ */
+const updateAccountSettings = asyncHandler(async (req, res) => {
+  const { email_notifications, marketing_emails, app_notifications } = req.body;
+  
+  const updateData = {};
+  
+  // Only update fields that are provided
+  if (email_notifications !== undefined) {
+    updateData.email_notifications = Boolean(email_notifications);
+  }
+  
+  if (marketing_emails !== undefined) {
+    updateData.marketing_emails = Boolean(marketing_emails);
+  }
+  
+  if (app_notifications !== undefined) {
+    updateData.app_notifications = Boolean(app_notifications);
+  }
+  
+  if (Object.keys(updateData).length === 0) {
+    throw new ApiError('No valid settings to update', 400);
+  }
+  
+  const updatedUser = await updateUserProfile(req.user.id, updateData);
+  
+  res.status(200).json({
+    success: true,
+    message: 'Account settings updated successfully',
+    data: {
+      email_notifications: updatedUser.email_notifications,
+      marketing_emails: updatedUser.marketing_emails,
+      app_notifications: updatedUser.app_notifications
+    }
+  });
+});
+
 module.exports = {
   getCurrentUser,
   updateProfile,
@@ -131,5 +196,7 @@ module.exports = {
   getCreditTransactionHistory,
   getUsers,
   getUserByIdAdmin,
-  updateUserRole
+  updateUserRole,
+  getUserFullProfile,
+  updateAccountSettings
 }; 

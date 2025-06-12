@@ -106,6 +106,12 @@ const createUserProfile = async (userData, profileData = {}, ip = null) => {
       currency: profileData.currency || locationInfo.currency || 'USD',
       timezone: profileData.timezone || locationInfo.timezone || 'UTC',
       language: profileData.language || 'en',
+      bio: profileData.bio || '',
+      website: profileData.website || '',
+      phone_number: profileData.phone_number || '',
+      email_notifications: profileData.email_notifications !== undefined ? profileData.email_notifications : true,
+      marketing_emails: profileData.marketing_emails !== undefined ? profileData.marketing_emails : false,
+      app_notifications: profileData.app_notifications !== undefined ? profileData.app_notifications : true,
       role: 'user',
       credit_balance: 0,
       lemonsqueezy_customer_id: profileData.lemonsqueezy_customer_id || null
@@ -260,11 +266,95 @@ const setUserRole = async (userId, role) => {
   }
 };
 
+/**
+ * Get full user profile data with additional statistics and information
+ * @param {string} userId - The user ID
+ * @returns {Promise<Object>} - Comprehensive user profile data
+ */
+const getUserFullProfileData = async (userId) => {
+  try {
+    // Get basic user profile
+    const user = await getUserById(userId);
+    
+    // Get additional user data
+    const { data: generationStats, error: statsError } = await supabase
+      .from('image_generations')
+      .select('id, created_at, generation_type')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+      
+    if (statsError) {
+      console.error('Error fetching generation stats:', statsError);
+    }
+    
+    // Get credit transactions
+    const { data: creditTransactions, error: creditError } = await supabase
+      .from('credit_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+      
+    if (creditError) {
+      console.error('Error fetching credit transactions:', creditError);
+    }
+    
+    // Calculate statistics
+    const totalGenerations = generationStats?.length || 0;
+    
+    // Group by generation type
+    const generationTypes = {};
+    if (generationStats) {
+      generationStats.forEach(gen => {
+        const type = gen.generation_type || 'standard';
+        if (!generationTypes[type]) {
+          generationTypes[type] = 0;
+        }
+        generationTypes[type]++;
+      });
+    }
+    
+    // Calculate activity by day/month for the last 30 days
+    const activityByDay = {};
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+    
+    if (generationStats) {
+      generationStats.forEach(gen => {
+        const date = new Date(gen.created_at);
+        if (date >= thirtyDaysAgo) {
+          const day = date.toISOString().split('T')[0];
+          if (!activityByDay[day]) {
+            activityByDay[day] = 0;
+          }
+          activityByDay[day]++;
+        }
+      });
+    }
+    
+    return {
+      ...user,
+      statistics: {
+        total_generations: totalGenerations,
+        generation_types: generationTypes,
+        recent_activity: activityByDay
+      },
+      recent_transactions: creditTransactions || []
+    };
+  } catch (error) {
+    console.error('Error getting user full profile data:', error);
+    throw error instanceof ApiError 
+      ? error 
+      : new ApiError(`Failed to get user full profile data: ${error.message}`, 500);
+  }
+};
+
 module.exports = {
   getUserById,
   createUserProfile,
   updateUserProfile,
   getAllUsers,
   setUserRole,
-  getLocationInfo
+  getLocationInfo,
+  getUserFullProfileData
 }; 

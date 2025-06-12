@@ -29,16 +29,47 @@ const RESOLUTIONS = {
   POSTER_PORTRAIT: { width: 720, height: 1280 },
   THUMBNAIL_YOUTUBE: { width: 1280, height: 720 },
   LOGO: { width: 512, height: 512 },
-  PRODUCT: { width: 1024, height: 1024 }
+  PRODUCT: { width: 1024, height: 1024 },
+  // Add aspect ratio options
+  SQUARE: { width: 1024, height: 1024 },         // 1:1
+  LANDSCAPE: { width: 1344, height: 768 },       // 16:9
+  PORTRAIT: { width: 768, height: 1344 },        // 9:16
+  WIDESCREEN: { width: 1024, height: 576 },      // 16:9 but smaller
+  // Add high-resolution options for wallpapers
+  WALLPAPER_HD: { width: 1920, height: 1080 },   // Full HD 16:9
+  WALLPAPER_4K: { width: 3840, height: 2160 },   // 4K 16:9
+  WALLPAPER_MOBILE: { width: 1080, height: 1920 } // Mobile 9:16
+};
+
+// Define available style presets
+const STYLES = {
+  NONE: null,
+  REALISTIC: 'photographic',
+  ANIME: 'anime',
+  CARTOON_STYLE: 'digital-art', // closest to cartoon
+  DIGITAL_ART: 'digital-art',
+  FANTASY: 'fantasy-art',
+  COMICS: 'comic-book',
+  CINEMATIC: 'cinematic',
+  THREE_D: '3d-model',
+  PIXEL_ART: 'pixel-art',
+  ORIGAMI: 'origami',
+  LINE_ART: 'line-art',
+  ENHANCE: 'enhance',
+  NEON_PUNK: 'neon-punk',
+  ISOMETRIC: 'isometric',
+  LOW_POLY: 'low-poly',
+  MODELING_COMPOUND: 'modeling-compound',
+  TILE_TEXTURE: 'tile-texture'
 };
 
 // Define generation types with their presets and modifiers
 const GENERATION_TYPES = {
   GENERAL: {
-    name: 'AI Art Generator',
-    description: 'Text-to-Image generation (Stable Diffusion)',
+    name: 'Text-to-Image Generator',
+    description: 'Generate images from text descriptions',
     defaultModel: MODELS.STABLE_DIFFUSION_XL,
-    defaultResolution: 'NORMAL',
+    defaultResolution: 'SQUARE',
     promptPrefix: '',
     promptSuffix: '', 
     negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry'
@@ -123,6 +154,24 @@ const GENERATION_TYPES = {
     promptPrefix: 'fantasy art of ',
     promptSuffix: ', magical, ethereal, detailed, epic, dramatic lighting, digital art',
     negativePrompt: 'mundane, realistic, photo, photograph, amateur, low quality, blurry'
+  },
+  WALLPAPER: {
+    name: 'AI Wallpaper Generator',
+    description: 'High-resolution wallpapers for desktop and mobile',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'WALLPAPER_HD',
+    promptPrefix: 'wallpaper of ',
+    promptSuffix: ', high resolution, digital art, detailed, professionally made, perfect for desktop background',
+    negativePrompt: 'low quality, blurry, distorted, watermark, text, logo, signature, simple, plain'
+  },
+  IMAGE_TO_IMAGE: {
+    name: 'Image-to-Image Generator',
+    description: 'Transform existing images with new styles or modifications',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'SQUARE',
+    promptPrefix: '',
+    promptSuffix: ', modified version, reimagined',
+    negativePrompt: 'poor quality, low quality, blurry, distorted, watermark'
   }
 };
 
@@ -138,6 +187,7 @@ const GENERATION_TYPES = {
  * @param {number} options.cfgScale - CFG scale (default: 7)
  * @param {number} options.steps - Number of steps (default: 30)
  * @param {string} options.style - Style preset (optional)
+ * @param {number} options.numberOfImages - Number of images to generate (default: 1)
  * @returns {Promise<Object>} - Generated image data
  */
 const generateImage = async ({
@@ -148,7 +198,8 @@ const generateImage = async ({
   resolution,
   cfgScale = 7,
   steps = 30,
-  style = null
+  style = null,
+  numberOfImages = 1
 }) => {
   // Validate inputs
   if (!prompt || prompt.trim() === '') {
@@ -163,14 +214,45 @@ const generateImage = async ({
   const genType = GENERATION_TYPES[generationType] || GENERATION_TYPES.GENERAL;
   
   // Apply type-specific settings
-  const enhancedPrompt = `${genType.promptPrefix}${prompt}${genType.promptSuffix}`;
-  const enhancedNegativePrompt = negativePrompt || genType.negativePrompt;
+  let enhancedPrompt = `${genType.promptPrefix}${prompt}${genType.promptSuffix}`;
+  let enhancedNegativePrompt = negativePrompt || genType.negativePrompt;
+
+  // Apply style-specific prompt enhancements
+  if (style) {
+    // For specific styles, enhance the prompt further
+    switch (style) {
+      case STYLES.REALISTIC:
+        enhancedPrompt = `${enhancedPrompt}, photorealistic, highly detailed, sharp focus, realistic lighting and textures, professional photography`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, cartoon, anime, illustration, drawing, painting, digital art, sketchy, blurry`;
+        break;
+      case STYLES.ANIME:
+        enhancedPrompt = `${enhancedPrompt}, anime style, manga, detailed, 2D, vibrant colors, clean lines, anime illustration, japanese anime style`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, western, photorealistic, 3D, realistic`;
+        break;
+      case STYLES.CARTOON_STYLE:
+        enhancedPrompt = `${enhancedPrompt}, cartoon style, stylized, bright colors, simple shapes, bold outlines, cheerful, animated`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, detailed, complex, dark, gloomy`;
+        break;
+      case STYLES.DIGITAL_ART:
+        enhancedPrompt = `${enhancedPrompt}, digital art, vibrant colors, detailed, fantasy, sci-fi, conceptual, polished`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, realistic, photorealistic, sketch, rough, physical media`;
+        break;
+      case STYLES.FANTASY:
+        enhancedPrompt = `${enhancedPrompt}, fantasy art, magical, ethereal, dreamy, mystical, epic, dramatic lighting, fantasy landscape`;
+        enhancedNegativePrompt = `${enhancedNegativePrompt}, mundane, realistic, photo, photograph, everyday`;
+        break;
+    }
+  }
+
   const selectedModel = modelId || genType.defaultModel;
   const selectedResolution = resolution || genType.defaultResolution;
 
   try {
     // Set resolution dimensions
     const dimensions = RESOLUTIONS[selectedResolution] || RESOLUTIONS.NORMAL;
+
+    // Ensure number of images is between 1 and 4
+    const samples = Math.min(Math.max(1, numberOfImages), 4);
 
     // Construct the request payload
     const payload = {
@@ -182,7 +264,7 @@ const generateImage = async ({
       height: dimensions.height,
       width: dimensions.width,
       steps: steps,
-      samples: 1,
+      samples: samples,
       ...(style && { style_preset: style })
     };
 
@@ -237,23 +319,112 @@ const generateImage = async ({
 };
 
 /**
- * Get available generation types
- * 
- * @returns {Array} - List of available generation types
+ * Get available generation types for frontend use
+ * @returns {Array} - Array of generation type objects with their settings
  */
 const getGenerationTypes = () => {
   return Object.entries(GENERATION_TYPES).map(([key, value]) => ({
     id: key,
     name: value.name,
-    description: value.description,
-    defaultResolution: value.defaultResolution
+    description: value.description
   }));
+};
+
+/**
+ * Get available style presets for frontend use
+ * @returns {Array} - Array of style preset objects
+ */
+const getStylePresets = () => {
+  const styleDescriptions = {
+    NONE: "No specific style",
+    REALISTIC: "Photorealistic images with natural lighting and textures",
+    ANIME: "Japanese animation style with clean lines and vibrant colors",
+    CARTOON_STYLE: "Stylized and simplified with bold outlines and bright colors",
+    DIGITAL_ART: "Digital illustration with defined brushstrokes and vibrant colors",
+    FANTASY: "Magical and ethereal fantasy art style",
+    COMICS: "Comic book style with bold lines and action-oriented composition",
+    CINEMATIC: "Movie-like quality with dramatic lighting and composition",
+    THREE_D: "3D rendered look with depth and realistic textures",
+    PIXEL_ART: "Retro-style pixelated graphics",
+    ORIGAMI: "Paper-folded look with clean lines and geometric shapes",
+    LINE_ART: "Simple line drawings with minimal details",
+    ENHANCE: "Enhanced details and quality boost",
+    NEON_PUNK: "Cyberpunk aesthetic with neon colors and futuristic elements",
+    ISOMETRIC: "Isometric style with flat, two-dimensional appearance",
+    LOW_POLY: "Low-poly style with simplified geometric shapes",
+    MODELING_COMPOUND: "Modeling compound style with detailed and realistic textures",
+    TILE_TEXTURE: "Tile texture style with repeated patterns and geometric shapes"
+  };
+
+  return Object.entries(STYLES).map(([key, value]) => ({
+    id: value,
+    name: key.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase()),
+    description: styleDescriptions[key] || ""
+  }));
+};
+
+/**
+ * Get style suggestions based on the prompt content
+ * @param {string} prompt - The user's prompt
+ * @returns {Array} - Array of suggested style presets
+ */
+const getSuggestedStyles = (prompt) => {
+  const promptLower = prompt.toLowerCase();
+  const suggestions = [];
+
+  // Detect content types in the prompt
+  const contentPatterns = {
+    portrait: ['portrait', 'person', 'face', 'man', 'woman', 'girl', 'boy', 'child', 'people'],
+    landscape: ['landscape', 'mountains', 'forest', 'beach', 'nature', 'sky', 'outdoor', 'scenery'],
+    fantasy: ['fantasy', 'dragon', 'magical', 'fairy', 'elf', 'wizard', 'magic', 'mythical'],
+    scifi: ['sci-fi', 'robot', 'futuristic', 'space', 'alien', 'cyberpunk', 'technology'],
+    cartoon: ['cartoon', 'animation', 'character', 'cute', 'colorful', 'stylized'],
+    anime: ['anime', 'manga', 'japanese', 'character', 'kawaii'],
+    product: ['product', 'commercial', 'advertisement', 'merchandise', 'brand']
+  };
+
+  // Match content types and suggest appropriate styles
+  for (const [type, keywords] of Object.entries(contentPatterns)) {
+    if (keywords.some(keyword => promptLower.includes(keyword))) {
+      switch (type) {
+        case 'portrait':
+          suggestions.push(STYLES.REALISTIC, STYLES.DIGITAL_ART);
+          break;
+        case 'landscape':
+          suggestions.push(STYLES.REALISTIC, STYLES.FANTASY);
+          break;
+        case 'fantasy':
+          suggestions.push(STYLES.FANTASY, STYLES.DIGITAL_ART);
+          break;
+        case 'scifi':
+          suggestions.push(STYLES.DIGITAL_ART, STYLES.NEON_PUNK);
+          break;
+        case 'cartoon':
+          suggestions.push(STYLES.CARTOON_STYLE, STYLES.DIGITAL_ART);
+          break;
+        case 'anime':
+          suggestions.push(STYLES.ANIME);
+          break;
+        case 'product':
+          suggestions.push(STYLES.REALISTIC, STYLES.THREE_D);
+          break;
+      }
+    }
+  }
+
+  // Return unique suggestions, or default to digital art if none found
+  return [...new Set(suggestions)].length > 0 
+    ? [...new Set(suggestions)] 
+    : [STYLES.DIGITAL_ART];
 };
 
 module.exports = {
   generateImage,
   getGenerationTypes,
+  getStylePresets,
+  getSuggestedStyles,
   MODELS,
   RESOLUTIONS,
+  STYLES,
   GENERATION_TYPES
 }; 

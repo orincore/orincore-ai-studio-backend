@@ -6,7 +6,9 @@ const {
   getCreditTransactionHistory,
   getUsers,
   getUserByIdAdmin,
-  updateUserRole
+  updateUserRole,
+  getUserFullProfile,
+  updateAccountSettings
 } = require('../controllers/userController');
 const { protect, admin } = require('../middlewares/authMiddleware');
 
@@ -17,6 +19,8 @@ router.get('/me', protect, getCurrentUser);
 router.put('/me', protect, updateProfile);
 router.get('/me/credits', protect, getCredits);
 router.get('/me/credits/history', protect, getCreditTransactionHistory);
+router.get('/me/full-profile', protect, getUserFullProfile);
+router.patch('/me/account-settings', protect, updateAccountSettings);
 
 // Admin routes (protected + admin)
 router.get('/', protect, admin, getUsers);

@@ -39,14 +39,67 @@ Orincore AI Studio uses a secure email verification flow with 6-digit OTP codes:
 | GET    | `/api/users/:id`        | Get user by ID                                        | Admin only  |
 | PATCH  | `/api/users/:id/role`   | Update user role                                      | Admin only  |
 
-### AI Image Generation
+### Image Generation
 
-| Method | Endpoint                | Description                                           | Access      |
-|--------|-------------------------|-------------------------------------------------------|-------------|
-| POST   | `/api/ai/thumbnails`    | Generate YouTube thumbnail                            | Protected   |
-| POST   | `/api/ai/posters`       | Generate poster                                       | Protected   |
-| POST   | `/api/ai/images`        | Generate custom image                                 | Protected   |
-| GET    | `/api/ai/history`       | Get generation history                                | Protected   |
+| Method | Endpoint                      | Description                                        | Access      | Credit Cost |
+|--------|-------------------------------|----------------------------------------------------|-------------|------------|
+| POST   | `/api/images/generate`        | Generate custom image (Text-to-Image)              | Protected   | 10 credits (free for first generation) |
+| POST   | `/api/images/suggest-styles`  | Get style suggestions based on a prompt            | Protected   | No cost    |
+| GET    | `/api/images/options`         | Get available models, resolutions, and styles      | Protected   | No cost    |
+| GET    | `/api/images`                 | Get user's generated images                        | Protected   | No cost    |
+| GET    | `/api/images/:id`             | Get image by ID                                    | Protected   | No cost    |
+| DELETE | `/api/images/:id`             | Delete image by ID                                 | Protected   | No cost    |
+
+### Thumbnail Generation
+
+| Method | Endpoint                      | Description                                        | Access      | Credit Cost |
+|--------|-------------------------------|----------------------------------------------------|-------------|------------|
+| POST   | `/api/thumbnails/generate`    | Generate YouTube thumbnail                         | Protected   | 50 credits (free for first generation) |
+| GET    | `/api/thumbnails`             | Get user's generated thumbnails                    | Protected   | No cost    |
+| GET    | `/api/thumbnails/:id`         | Get thumbnail by ID                                | Protected   | No cost    |
+| DELETE | `/api/thumbnails/:id`         | Delete thumbnail by ID                             | Protected   | No cost    |
+
+### Poster Generation
+
+| Method | Endpoint                      | Description                                        | Access      | Credit Cost |
+|--------|-------------------------------|----------------------------------------------------|-------------|------------|
+| POST   | `/api/posters/generate`       | Generate poster                                    | Protected   | 50 credits (free for first generation) |
+| GET    | `/api/posters`                | Get user's generated posters                       | Protected   | No cost    |
+| GET    | `/api/posters/:id`            | Get poster by ID                                   | Protected   | No cost    |
+| DELETE | `/api/posters/:id`            | Delete poster by ID                                | Protected   | No cost    |
+
+### Logo Generation
+
+| Method | Endpoint                      | Description                                        | Access      | Credit Cost |
+|--------|-------------------------------|----------------------------------------------------|-------------|------------|
+| POST   | `/api/images/generate`        | Generate logo with generationType=LOGO             | Protected   | 25 credits (free for first generation) |
+
+### Wallpaper Generation
+
+| Method | Endpoint                      | Description                                        | Access      | Credit Cost |
+|--------|-------------------------------|----------------------------------------------------|-------------|------------|
+| POST   | `/api/images/generate`        | Generate wallpaper with generationType=WALLPAPER   | Protected   | 50 credits (free for first generation) |
+
+### Image-to-Image Generation
+
+| Method | Endpoint                      | Description                                        | Access      | Credit Cost |
+|--------|-------------------------------|----------------------------------------------------|-------------|------------|
+| POST   | `/api/images/generate`        | Generate with generationType=IMAGE_TO_IMAGE        | Protected   | 10 credits (free for first generation) |
+
+### Admin Endpoints
+
+| Method | Endpoint                      | Description                                        | Access      |
+|--------|-------------------------------|----------------------------------------------------|-------------|
+| GET    | `/api/admin/stats/users`      | Get user statistics                                | Admin only  |
+| GET    | `/api/admin/stats/images`     | Get image generation statistics                    | Admin only  |
+| GET    | `/api/admin/stats/credits`    | Get credit usage statistics                        | Admin only  |
+
+### Webhooks
+
+| Method | Endpoint                      | Description                                        | Access      |
+|--------|-------------------------------|----------------------------------------------------|-------------|
+| POST   | `/api/webhooks/lemonsqueezy`  | LemonSqueezy payment webhook                       | Public      |
+| POST   | `/api/webhooks/supabase`      | Supabase auth webhook                              | Public      |
 
 ## Authentication Request/Response Examples
 
@@ -197,6 +250,31 @@ POST /api/auth/reset-password
 
 5. **Credits System**: Image generation operations consume credits from the user's account.
 
+## Credit System
+
+The platform uses a credit-based system for generating images:
+
+### Credit Costs
+
+- **Text-to-Image Generation**: 10 credits
+- **Logo Generation**: 25 credits
+- **Poster Generation**: 50 credits
+- **Thumbnail Generation**: 50 credits
+- **Wallpaper Generation**: 50 credits
+- **Image-to-Image Generation**: 10 credits
+
+### Free Generation
+
+Each user gets ONE free generation of any type. This means:
+
+- New users can try any generation type once without consuming credits
+- After the first generation, credits will be deducted according to the costs above
+- The free generation applies across all generation types (e.g., if a user has already used their free generation for a thumbnail, they will not get another free generation for a poster)
+
+### Credit Purchase
+
+Users can purchase credits through the platform's subscription plans or one-time purchases.
+
 ## Security Considerations
 
 - All passwords are securely hashed
@@ -228,20 +306,58 @@ POST /api/auth/reset-password
 
 The platform supports multiple specialized image generation types:
 
-| Type | Description | Default Resolution |
-|------|-------------|-------------------|
-| 🎨 AI Art Generator | Text-to-Image generation (Stable Diffusion) | Normal (512x512) |
-| 🔥 AI Anime Generator | Anime style generations | Normal (512x512) |
-| 🏞 AI Realistic Generator | Real-life like generations | HD (768x768) |
-| 🐾 AI Logo Maker | Business / brand logos | Logo (512x512) |
-| 📊 AI Poster Creator | Professional posters | Poster Landscape (1280x720) |
-| 🎯 AI Thumbnail Creator | YouTube/Blog thumbnails | Thumbnail YouTube (1280x720) |
-| 💡 AI Concept Generator | Unique artistic ideas | HD (768x768) |
-| 🎮 AI Game Character Generator | Gaming avatars & characters | HD (768x768) |
-| 📸 AI Product Image Generator | Ecommerce product shots | Product (1024x1024) |
-| 🌌 AI Fantasy Art Generator | Sci-fi & fantasy world art | HD (768x768) |
+| Type | Description | Default Resolution | Credit Cost |
+|------|-------------|-------------------|-------------|
+| 🎨 Text-to-Image Generator | Generate images from text descriptions | Square (1024x1024) | 10 credits |
+| 🔥 AI Anime Generator | Anime style generations | Normal (512x512) | 10 credits |
+| 🏞 AI Realistic Generator | Real-life like generations | HD (768x768) | 10 credits |
+| 🐾 AI Logo Maker | Business / brand logos | Logo (512x512) | 25 credits |
+| 📊 AI Poster Creator | Professional posters | Poster Landscape (1280x720) | 50 credits |
+| 🎯 AI Thumbnail Creator | YouTube/Blog thumbnails | Thumbnail YouTube (1280x720) | 50 credits |
+| 💡 AI Concept Generator | Unique artistic ideas | HD (768x768) | 10 credits |
+| 🎮 AI Game Character Generator | Gaming avatars & characters | HD (768x768) | 10 credits |
+| 📸 AI Product Image Generator | Ecommerce product shots | Product (1024x1024) | 10 credits |
+| 🌌 AI Fantasy Art Generator | Sci-fi & fantasy world art | HD (768x768) | 10 credits |
+| 🖼️ AI Wallpaper Generator | High-resolution wallpapers | Wallpaper HD (1920x1080) | 50 credits |
+| 🔄 Image-to-Image Generator | Transform existing images | Square (1024x1024) | 10 credits |
 
 Each generation type has specialized prompts and settings to produce optimal results for that category.
+
+**Note**: Your first generation of any type is FREE! After that, credits will be consumed according to the costs listed above.
+
+### Available Style Presets
+
+The API provides various style presets to enhance image generation:
+
+| Style | Description |
+|-------|-------------|
+| Realistic | Photorealistic images with natural lighting and textures |
+| Anime | Japanese animation style with clean lines and vibrant colors |
+| Cartoon Style | Stylized and simplified with bold outlines and bright colors |
+| Digital Art | Digital illustration with defined brushstrokes and vibrant colors |
+| Fantasy | Magical and ethereal fantasy art style |
+| Comics | Comic book style with bold lines and action-oriented composition |
+| Cinematic | Movie-like quality with dramatic lighting and composition |
+| 3D | 3D rendered look with depth and realistic textures |
+| Pixel Art | Retro-style pixelated graphics |
+| Origami | Paper-folded look with clean lines and geometric shapes |
+| Line Art | Simple line drawings with minimal details |
+| Enhance | Enhanced details and quality boost |
+| Neon Punk | Cyberpunk aesthetic with neon colors and futuristic elements |
+
+### Available Aspect Ratios
+
+Choose from multiple aspect ratios for your generated images:
+
+| Aspect Ratio | Dimensions | Description |
+|--------------|------------|-------------|
+| Square | 1024x1024 | Perfect for social media posts |
+| Landscape | 1344x768 | Widescreen 16:9 format |
+| Portrait | 768x1344 | Vertical 9:16 format (ideal for mobile) |
+| Widescreen | 1024x576 | Standard 16:9 format |
+| Wallpaper HD | 1920x1080 | Full HD desktop wallpaper |
+| Wallpaper 4K | 3840x2160 | Ultra HD desktop wallpaper |
+| Mobile Wallpaper | 1080x1920 | High-resolution mobile wallpaper |
 
 ### Advanced Thumbnail Generator Features
 The YouTube Thumbnail Generator offers:
@@ -546,4 +662,82 @@ The API is designed to be deployed on Render.com:
 2. Connect your GitHub repository
 3. Configure the following settings:
    - **Environment**: Node
-   - **Build Command**: `
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Auto Deploy**: Yes
+
+## API Examples
+
+### Image Generation Examples
+
+#### Generate a Text-to-Image
+
+```bash
+curl -X POST https://api.orincore-ai-studio.com/api/images/generate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "prompt": "A beautiful mountain landscape with a lake at sunrise",
+    "negativePrompt": "ugly, blurry, low quality",
+    "generationType": "GENERAL",
+    "resolution": "LANDSCAPE",
+    "cfgScale": 7,
+    "steps": 30,
+    "style": "photographic",
+    "numberOfImages": 1
+  }'
+```
+
+#### Generate a Logo
+
+```bash
+curl -X POST https://api.orincore-ai-studio.com/api/images/generate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "prompt": "Modern logo for a tech company called Quantum",
+    "negativePrompt": "text, words, letters, complex, busy",
+    "generationType": "LOGO",
+    "resolution": "SQUARE",
+    "cfgScale": 7,
+    "steps": 30,
+    "style": "digital-art",
+    "numberOfImages": 1
+  }'
+```
+
+#### Generate a Wallpaper
+
+```bash
+curl -X POST https://api.orincore-ai-studio.com/api/images/generate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "prompt": "Futuristic city skyline at night with neon lights",
+    "negativePrompt": "ugly, blurry, low quality",
+    "generationType": "WALLPAPER",
+    "resolution": "WALLPAPER_HD",
+    "cfgScale": 7,
+    "steps": 30,
+    "style": "neon-punk",
+    "numberOfImages": 1
+  }'
+```
+
+#### Get Style Suggestions
+
+```bash
+curl -X POST https://api.orincore-ai-studio.com/api/images/suggest-styles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "prompt": "A portrait of a young woman in a garden"
+  }'
+```
+
+#### Get Available Options
+
+```bash
+curl -X GET https://api.orincore-ai-studio.com/api/images/options \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```

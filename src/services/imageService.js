@@ -18,6 +18,7 @@ const { getCloudinaryFolder } = require('../utils/imageUtils');
  * @param {number} options.cfgScale - CFG scale
  * @param {number} options.steps - Number of steps
  * @param {string} options.style - Style preset
+ * @param {number} options.numberOfImages - Number of images to generate
  * @param {string} options.userId - The user ID
  * @returns {Promise<Object>} - Generated image data
  */
@@ -30,6 +31,7 @@ const generateAndStoreImage = async ({
   cfgScale = 7,
   steps = 30,
   style = null,
+  numberOfImages = 1,
   userId
 }) => {
   let creditCost;
@@ -38,8 +40,12 @@ const generateAndStoreImage = async ({
     // Determine the actual resolution to use (either provided or default for generation type)
     const actualResolution = resolution || (GENERATION_TYPES[generationType]?.defaultResolution) || 'NORMAL';
     
-    // Calculate credit cost
-    creditCost = getCreditCost(generationType, actualResolution);
+    // Calculate credit cost (base cost per image)
+    const baseCreditCost = await getCreditCost(generationType, actualResolution, userId);
+    
+    // Total cost is base cost multiplied by number of images
+    // For free generations, keep the cost at 0
+    creditCost = baseCreditCost === 0 ? 0 : baseCreditCost * numberOfImages;
     
     // Deduct credits before generating the image
     await deductCredits(userId, creditCost, 'image_generation');
@@ -53,11 +59,13 @@ const generateAndStoreImage = async ({
       resolution,
       cfgScale,
       steps,
-      style
+      // If style contains multiple comma-separated values, use the first valid one
+      style: style ? style.split(',')[0].trim() : null,
+      numberOfImages
     });
     
-    // For each generated image (typically just one)
-    const storedImages = await Promise.all(generationResult.images.map(async (image, index) => {
+    // For each generated image
+    const storedImages = await Promise.all(generationResult.images.map(async (image) => {
       // Generate a unique ID for this image
       const imageId = uuidv4();
       
@@ -92,7 +100,7 @@ const generateAndStoreImage = async ({
           finish_reason: image.finishReason,
           cloudinary_url: cloudinaryResult.secure_url,
           cloudinary_public_id: cloudinaryResult.public_id,
-          credit_cost: creditCost
+          credit_cost: baseCreditCost // Credit cost per image
         })
         .select()
         .single();
@@ -121,7 +129,7 @@ const generateAndStoreImage = async ({
     }
     throw error instanceof ApiError 
       ? error 
-      : new ApiError(`Failed to generate image: ${error.message}`, 500);
+      : new ApiError(`Failed to generate and store image: ${error.message}`, 500);
   }
 };
 
