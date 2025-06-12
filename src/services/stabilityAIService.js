@@ -1,0 +1,259 @@
+const axios = require('axios');
+const dotenv = require('dotenv');
+const { v4: uuidv4 } = require('uuid');
+const { ApiError } = require('../middlewares/errorMiddleware');
+
+// Load environment variables
+dotenv.config();
+
+// Stability AI API configuration
+const STABILITY_API_KEY = process.env.STABILITY_AI_API_KEY;
+const STABILITY_API_URL = process.env.STABILITY_API_URL || 'https://api.stability.ai/v1';
+
+// Define available models and their endpoints
+const MODELS = {
+  STABLE_DIFFUSION_XL: 'stable-diffusion-xl-1024-v1-0',
+  STABLE_DIFFUSION_XL_BETA: 'stable-diffusion-xl-beta-v2-2-2',
+  STABLE_DIFFUSION: 'stable-diffusion-v1-5'
+};
+
+// Define image resolutions
+const RESOLUTIONS = {
+  NORMAL: { width: 512, height: 512 },
+  HD: { width: 768, height: 768 },
+  POSTER: { width: 1024, height: 1024 },
+  THUMBNAIL: { width: 384, height: 384 },
+  WIDE: { width: 768, height: 512 },
+  TALL: { width: 512, height: 768 },
+  POSTER_LANDSCAPE: { width: 1280, height: 720 },
+  POSTER_PORTRAIT: { width: 720, height: 1280 },
+  THUMBNAIL_YOUTUBE: { width: 1280, height: 720 },
+  LOGO: { width: 512, height: 512 },
+  PRODUCT: { width: 1024, height: 1024 }
+};
+
+// Define generation types with their presets and modifiers
+const GENERATION_TYPES = {
+  GENERAL: {
+    name: 'AI Art Generator',
+    description: 'Text-to-Image generation (Stable Diffusion)',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'NORMAL',
+    promptPrefix: '',
+    promptSuffix: '', 
+    negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry'
+  },
+  ANIME: {
+    name: 'AI Anime Generator',
+    description: 'Anime style generations',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'NORMAL',
+    promptPrefix: 'anime style, manga, detailed, 2D, ',
+    promptSuffix: ', vibrant colors, clean lines, anime illustration, japanese anime style',
+    negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry, western, photorealistic, 3D, realistic'
+  },
+  REALISTIC: {
+    name: 'AI Realistic Generator',
+    description: 'Real-life like generations',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'HD',
+    promptPrefix: 'photorealistic, hyperrealistic, highly detailed, sharp focus, ',
+    promptSuffix: ', 8k, professional photography, realistic lighting and textures',
+    negativePrompt: 'cartoon, anime, illustration, painting, drawing, artificial, fake, unnatural, deformed, blurry'
+  },
+  LOGO: {
+    name: 'AI Logo Maker',
+    description: 'Business / brand logos',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'LOGO',
+    promptPrefix: 'minimalist logo design for ',
+    promptSuffix: ', professional, corporate, vector style, clean lines, branding, isolated on white background',
+    negativePrompt: 'text, words, letters, busy, complex, detailed background, noisy, grainy, blurry, painting, drawing'
+  },
+  POSTER: {
+    name: 'AI Poster Creator',
+    description: 'Professional posters',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'POSTER_LANDSCAPE',
+    promptPrefix: 'professional poster design for ',
+    promptSuffix: ', advertisement, marketing material, high quality, commercial grade',
+    negativePrompt: 'amateur, low quality, blurry, distorted, watermark'
+  },
+  THUMBNAIL: {
+    name: 'AI Thumbnail Creator',
+    description: 'YouTube/Blog thumbnails',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'THUMBNAIL_YOUTUBE',
+    promptPrefix: 'eye-catching thumbnail for ',
+    promptSuffix: ', colorful, attention-grabbing, clear focal point',
+    negativePrompt: 'text, words, letters, small details, low quality, blurry'
+  },
+  CONCEPT: {
+    name: 'AI Concept Generator',
+    description: 'Unique artistic ideas',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'HD',
+    promptPrefix: 'concept art of ',
+    promptSuffix: ', detailed, professional, digital art, imaginative, creative',
+    negativePrompt: 'amateur, low quality, blurry, distorted, watermark'
+  },
+  GAME_CHARACTER: {
+    name: 'AI Game Character Generator',
+    description: 'Gaming avatars & characters',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'HD',
+    promptPrefix: 'game character design of ',
+    promptSuffix: ', detailed, high-quality game asset, 3D render style, character sheet',
+    negativePrompt: 'amateur, low quality, blurry, distorted, watermark'
+  },
+  PRODUCT: {
+    name: 'AI Product Image Generator',
+    description: 'Ecommerce product shots',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'PRODUCT',
+    promptPrefix: 'professional product photography of ',
+    promptSuffix: ', white background, studio lighting, commercial, marketing, clean',
+    negativePrompt: 'cluttered, dirty, amateur, low quality, blurry, distorted, watermark, noisy, grainy'
+  },
+  FANTASY: {
+    name: 'AI Fantasy Art Generator',
+    description: 'Sci-fi & fantasy world art',
+    defaultModel: MODELS.STABLE_DIFFUSION_XL,
+    defaultResolution: 'HD',
+    promptPrefix: 'fantasy art of ',
+    promptSuffix: ', magical, ethereal, detailed, epic, dramatic lighting, digital art',
+    negativePrompt: 'mundane, realistic, photo, photograph, amateur, low quality, blurry'
+  }
+};
+
+/**
+ * Generate an image using Stability AI
+ * 
+ * @param {Object} options - Generation options
+ * @param {string} options.prompt - The prompt for image generation
+ * @param {string} options.negativePrompt - Optional negative prompt
+ * @param {string} options.generationType - Type of generation (defaults to GENERAL)
+ * @param {string} options.modelId - The model ID to use (optional, will use type default)
+ * @param {string} options.resolution - Resolution type (optional, will use type default)
+ * @param {number} options.cfgScale - CFG scale (default: 7)
+ * @param {number} options.steps - Number of steps (default: 30)
+ * @param {string} options.style - Style preset (optional)
+ * @returns {Promise<Object>} - Generated image data
+ */
+const generateImage = async ({
+  prompt,
+  negativePrompt = '',
+  generationType = 'GENERAL',
+  modelId,
+  resolution,
+  cfgScale = 7,
+  steps = 30,
+  style = null
+}) => {
+  // Validate inputs
+  if (!prompt || prompt.trim() === '') {
+    throw new ApiError('Prompt is required for image generation', 400);
+  }
+
+  if (!STABILITY_API_KEY) {
+    throw new ApiError('Stability AI API key is not configured', 500);
+  }
+  
+  // Get generation type configuration
+  const genType = GENERATION_TYPES[generationType] || GENERATION_TYPES.GENERAL;
+  
+  // Apply type-specific settings
+  const enhancedPrompt = `${genType.promptPrefix}${prompt}${genType.promptSuffix}`;
+  const enhancedNegativePrompt = negativePrompt || genType.negativePrompt;
+  const selectedModel = modelId || genType.defaultModel;
+  const selectedResolution = resolution || genType.defaultResolution;
+
+  try {
+    // Set resolution dimensions
+    const dimensions = RESOLUTIONS[selectedResolution] || RESOLUTIONS.NORMAL;
+
+    // Construct the request payload
+    const payload = {
+      text_prompts: [
+        { text: enhancedPrompt, weight: 1 },
+        ...(enhancedNegativePrompt ? [{ text: enhancedNegativePrompt, weight: -1 }] : [])
+      ],
+      cfg_scale: cfgScale,
+      height: dimensions.height,
+      width: dimensions.width,
+      steps: steps,
+      samples: 1,
+      ...(style && { style_preset: style })
+    };
+
+    // Make the API request
+    const response = await axios({
+      method: 'post',
+      url: `${STABILITY_API_URL}/generation/${selectedModel}/text-to-image`,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${STABILITY_API_KEY}`
+      },
+      data: payload,
+      responseType: 'json'
+    });
+
+    // Process the response
+    const generatedImages = response.data.artifacts.map(artifact => ({
+      base64: artifact.base64,
+      seed: artifact.seed,
+      finishReason: artifact.finish_reason
+    }));
+
+    return {
+      id: uuidv4(),
+      prompt: enhancedPrompt,
+      originalPrompt: prompt,
+      negativePrompt: enhancedNegativePrompt,
+      generationType,
+      modelId: selectedModel,
+      resolution: selectedResolution,
+      width: dimensions.width,
+      height: dimensions.height,
+      cfgScale,
+      steps,
+      style,
+      timestamp: new Date().toISOString(),
+      images: generatedImages
+    };
+  } catch (error) {
+    console.error('Stability AI generation error:', error.response?.data || error.message);
+    
+    if (error.response) {
+      throw new ApiError(
+        `Stability AI error: ${error.response.data?.message || 'Failed to generate image'}`,
+        error.response.status || 500
+      );
+    }
+    
+    throw new ApiError('Failed to generate image: ' + error.message, 500);
+  }
+};
+
+/**
+ * Get available generation types
+ * 
+ * @returns {Array} - List of available generation types
+ */
+const getGenerationTypes = () => {
+  return Object.entries(GENERATION_TYPES).map(([key, value]) => ({
+    id: key,
+    name: value.name,
+    description: value.description,
+    defaultResolution: value.defaultResolution
+  }));
+};
+
+module.exports = {
+  generateImage,
+  getGenerationTypes,
+  MODELS,
+  RESOLUTIONS,
+  GENERATION_TYPES
+}; 
