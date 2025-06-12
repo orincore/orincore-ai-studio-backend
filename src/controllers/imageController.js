@@ -29,12 +29,14 @@ const generateImage = asyncHandler(async (req, res) => {
     negativePrompt, 
     generationType = 'GENERAL',
     modelId, 
-    resolution, 
-    cfgScale = 7, 
-    steps = 30, 
     style,
-    numberOfImages = 1
+    numberOfImages = 1,
+    cfgScale = 7, 
+    steps = 30
   } = req.body;
+  
+  // Get resolution as a variable that can be modified
+  let resolution = req.body.resolution;
   
   // Validate prompt
   if (!prompt) {
