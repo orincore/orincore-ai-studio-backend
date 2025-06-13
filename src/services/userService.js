@@ -106,12 +106,6 @@ const createUserProfile = async (userData, profileData = {}, ip = null) => {
       currency: profileData.currency || locationInfo.currency || 'USD',
       timezone: profileData.timezone || locationInfo.timezone || 'UTC',
       language: profileData.language || 'en',
-      bio: profileData.bio || '',
-      website: profileData.website || '',
-      phone_number: profileData.phone_number || '',
-      email_notifications: profileData.email_notifications !== undefined ? profileData.email_notifications : true,
-      marketing_emails: profileData.marketing_emails !== undefined ? profileData.marketing_emails : false,
-      app_notifications: profileData.app_notifications !== undefined ? profileData.app_notifications : true,
       role: 'user',
       credit_balance: 0,
       lemonsqueezy_customer_id: profileData.lemonsqueezy_customer_id || null
