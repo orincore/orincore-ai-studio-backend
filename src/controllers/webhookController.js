@@ -227,27 +227,64 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
       throw new ApiError('User does not exist', 400);
     }
 
-    // Record the transaction first
-    const { error: insertError } = await supabase
+    // Check if this payment has already been processed
+    const { data: existingPayment, error: paymentCheckError } = await supabase
       .from('payment_transactions')
-      .insert({
-        order_id: orderId,
-        user_id: userId,
-        amount: orderAmount,
-        currency: 'INR',
-        email: email,
-        payment_id: paymentId,
-        status: paymentStatus,
-        payment_time: paymentTime.toISOString(),
-        payment_data: payload.data
-      });
+      .select('id, status')
+      .eq('payment_id', paymentId)
+      .eq('order_id', orderId)
+      .single();
 
-    if (insertError) {
-      console.error('❌ Failed to insert payment transaction:', insertError);
-      throw new ApiError('Failed to record payment transaction', 500);
+    if (!paymentCheckError && existingPayment) {
+      console.log(`⚠️ Payment ${paymentId} for order ${orderId} already processed with status ${existingPayment.status}`);
+      
+      // If the payment was already successfully processed, return success
+      if (existingPayment.status === 'SUCCESS') {
+        return res.status(200).json({ 
+          received: true, 
+          message: 'Payment already processed',
+          success: true
+        });
+      }
+      
+      // If status changed, update the existing record instead of creating a new one
+      const { error: updateError } = await supabase
+        .from('payment_transactions')
+        .update({
+          status: paymentStatus,
+          payment_data: payload.data,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingPayment.id);
+      
+      if (updateError) {
+        console.error('❌ Failed to update existing payment transaction:', updateError);
+      } else {
+        console.log(`✅ Updated payment status to ${paymentStatus} for existing transaction`);
+      }
+    } else {
+      // Record the transaction
+      const { error: insertError } = await supabase
+        .from('payment_transactions')
+        .insert({
+          order_id: orderId,
+          user_id: userId,
+          amount: orderAmount,
+          currency: 'INR',
+          email: email,
+          payment_id: paymentId,
+          status: paymentStatus,
+          payment_time: paymentTime.toISOString(),
+          payment_data: payload.data
+        });
+
+      if (insertError) {
+        console.error('❌ Failed to insert payment transaction:', insertError);
+        throw new ApiError('Failed to record payment transaction', 500);
+      }
+
+      console.log(`✅ Transaction recorded for order ${orderId}`);
     }
-
-    console.log(`✅ Transaction recorded for order ${orderId}`);
     
     // Update payment order status if it exists
     const { error: updatePaymentError } = await supabase
@@ -267,56 +304,69 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
 
     // Handle payment status
     if (paymentStatus === 'SUCCESS') {
-      // Check if this is an RS2000 plan purchase
-      const isRS2000Plan = orderNote.includes('RS2000') || 
-                          (orderAmount === 2000 && (orderNote.includes('plan') || orderTags.purchase_type === 'plan')) || 
-                          orderTags.plan_type === 'RS2000';
+      // Only process payment if it's new or status was updated to SUCCESS
+      const isNewSuccessfulPayment = !existingPayment || existingPayment.status !== 'SUCCESS';
       
-      if (isRS2000Plan) {
-        console.log(`✅ RS2000 plan purchase detected for user ${userId}`);
+      if (isNewSuccessfulPayment) {
+        console.log(`✅ Processing new successful payment for order ${orderId}`);
         
-        // Update user to professional role and plan
-        const now = new Date();
-        const expiryDate = new Date(now);
-        expiryDate.setDate(now.getDate() + 30); // 30 days plan duration
+        // Check if this is an RS2000 plan purchase
+        const isRS2000Plan = orderNote.includes('RS2000') || 
+                            (orderAmount === 2000 && (orderNote.includes('plan') || orderTags.purchase_type === 'plan')) || 
+                            orderTags.plan_type === 'RS2000';
         
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            current_plan: 'professional',
-            plan_expiry: expiryDate.toISOString(),
-            role: 'professional'
-          })
-          .eq('id', userId);
-        
-        if (updateError) {
-          console.error('❌ Failed to update user to professional:', updateError);
+        if (isRS2000Plan) {
+          console.log(`✅ RS2000 plan purchase detected for user ${userId}`);
+          
+          // Update user to professional role and plan
+          const now = new Date();
+          const expiryDate = new Date(now);
+          expiryDate.setDate(now.getDate() + 30); // 30 days plan duration
+          
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              current_plan: 'professional',
+              plan_expiry: expiryDate.toISOString(),
+              role: 'professional'
+            })
+            .eq('id', userId);
+          
+          if (updateError) {
+            console.error('❌ Failed to update user to professional:', updateError);
+          } else {
+            console.log(`✅ User ${userId} upgraded to professional with RS2000 plan`);
+          }
         } else {
-          console.log(`✅ User ${userId} upgraded to professional with RS2000 plan`);
+          // Regular payment - Add credits to user's account
+          try {
+            console.log(`💰 Starting atomic credit addition for user ${userId}, amount: ${orderAmount}`);
+            
+            // Use a transaction to avoid race conditions
+            const { data: result, error: transactionError } = await supabase.rpc('add_credits', {
+              p_user_id: userId,
+              p_amount: orderAmount,
+              p_source: 'payment',
+              p_reference_id: orderId
+            });
+            
+            if (transactionError) {
+              console.error('❌ Failed to add credits:', transactionError);
+              throw new ApiError('Failed to add credits to user account', 500);
+            }
+            
+            if (result.status === 'already_processed') {
+              console.log(`⚠️ Payment ${orderId} already processed, skipping credit addition. Current balance: ${result.new_balance}`);
+            } else {
+              console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, previous balance: ${result.previous_balance}, new balance: ${result.new_balance}`);
+            }
+          } catch (error) {
+            console.error('❌ Error processing credit addition:', error);
+            // Don't throw here, we still want to return 200 to Cashfree
+          }
         }
       } else {
-        // Regular payment - Add credits to user's account
-        try {
-          console.log(`💰 Starting atomic credit addition for user ${userId}, amount: ${orderAmount}`);
-          
-          // Use a transaction to avoid race conditions
-          const { data: result, error: transactionError } = await supabase.rpc('add_credits', {
-            p_user_id: userId,
-            p_amount: orderAmount,
-            p_source: 'payment',
-            p_reference_id: orderId
-          });
-          
-          if (transactionError) {
-            console.error('❌ Failed to add credits:', transactionError);
-            throw new ApiError('Failed to add credits to user account', 500);
-          }
-          
-          console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, previous balance: ${result.previous_balance}, new balance: ${result.new_balance}`);
-        } catch (error) {
-          console.error('❌ Error processing credit addition:', error);
-          // Don't throw here, we still want to return 200 to Cashfree
-        }
+        console.log(`ℹ️ Payment ${paymentId} already processed successfully, skipping processing`);
       }
     } else if (paymentStatus === 'TEST') {
       // Handle test webhooks from Cashfree

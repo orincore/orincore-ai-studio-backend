@@ -1,4 +1,4 @@
--- Function to atomically add credits to a user's account
+-- Function to atomically add credits to a user's account with idempotency check
 CREATE OR REPLACE FUNCTION add_credits(
   p_user_id UUID,
   p_amount NUMERIC,
@@ -8,7 +8,28 @@ CREATE OR REPLACE FUNCTION add_credits(
 DECLARE
   v_current_balance NUMERIC;
   v_new_balance NUMERIC;
+  v_existing_transaction BOOLEAN;
 BEGIN
+  -- Check if this transaction has already been processed
+  SELECT EXISTS (
+    SELECT 1 FROM credit_transactions 
+    WHERE reference_id = p_reference_id AND user_id = p_user_id
+  ) INTO v_existing_transaction;
+  
+  -- If transaction already exists, return current balance without making changes
+  IF v_existing_transaction THEN
+    SELECT credit_balance INTO v_current_balance
+    FROM profiles
+    WHERE id = p_user_id;
+    
+    RETURN jsonb_build_object(
+      'previous_balance', v_current_balance,
+      'added_amount', 0,
+      'new_balance', v_current_balance,
+      'status', 'already_processed'
+    );
+  END IF;
+  
   -- Lock the user row to prevent concurrent updates
   SELECT credit_balance INTO v_current_balance
   FROM profiles
@@ -47,7 +68,8 @@ BEGIN
   RETURN jsonb_build_object(
     'previous_balance', v_current_balance,
     'added_amount', p_amount,
-    'new_balance', v_new_balance
+    'new_balance', v_new_balance,
+    'status', 'success'
   );
 END;
 $$ LANGUAGE plpgsql; 
