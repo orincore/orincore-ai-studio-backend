@@ -353,20 +353,20 @@ const deleteImage = async (imageId, userId) => {
  */
 const calculateCreditCost = (imageParams) => {
   // Base cost for standard image generation
-  let cost = 1;
+  let cost = 10;
   
   // Additional cost for larger resolutions
   if (imageParams.width && imageParams.height) {
     const area = imageParams.width * imageParams.height;
     if (area > 1024 * 1024) {
       // Higher resolution images cost more
-      cost += 1;
+      cost += 5;
     }
   }
   
   // Additional cost for more steps
   if (imageParams.steps && imageParams.steps > 30) {
-    cost += 1;
+    cost += 5;
   }
   
   return cost;
