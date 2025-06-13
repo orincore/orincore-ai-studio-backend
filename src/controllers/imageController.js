@@ -3,7 +3,8 @@ const {
   generateAndStoreImage, 
   getUserImages, 
   getImageById, 
-  deleteImage 
+  deleteImage,
+  createImage
 } = require('../services/imageService');
 const { 
   MODELS, 
@@ -18,156 +19,45 @@ const {
 } = require('../services/stabilityAIService');
 const logoService = require('../services/logoService');
 const { ApiError } = require('../middlewares/errorMiddleware');
+const { isUserOnFreePlan } = require('../services/planService');
 
 /**
  * @desc    Generate a new image
  * @route   POST /api/images/generate
  * @access  Private
  */
-const generateImage = asyncHandler(async (req, res) => {
-  const { 
-    prompt, 
-    negativePrompt, 
-    generationType = 'GENERAL',
-    modelId, 
-    style,
-    numberOfImages = 1,
-    cfgScale = 7, 
-    steps = 30
-  } = req.body;
-  
-  // Get resolution as a variable that can be modified
-  let resolution = req.body.resolution;
-  
-  // Validate prompt
-  if (!prompt) {
-    throw new ApiError('Prompt is required', 400);
-  }
-  
-  // Validate generation type
-  if (generationType && !GENERATION_TYPES[generationType]) {
-    throw new ApiError(`Invalid generation type. Valid options are: ${Object.keys(GENERATION_TYPES).join(', ')}`, 400);
-  }
-  
-  // Special handling for logo generation - redirect to specialized logo service
-  if (generationType === 'LOGO') {
-    console.log('Redirecting to specialized logo generation service');
+const generateImage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const imageParams = req.body;
     
-    // Extract logo-specific parameters
-    const { 
-      colorTheme = '',
-      industry = '',
-      description = ''
-    } = req.body;
-    
-    // Generate logo using specialized logo service
-    const result = await logoService.generateLogo({
-      name: prompt,
-      description,
-      colorTheme,
-      style: style || 'minimalist',
-      industry,
-      userId: req.user.id
-    });
-    
-    return res.status(201).json({
-      success: true,
-      data: result
-    });
-  }
-  
-  // Continue with regular image generation for non-logo types
-  // Validate model ID if provided
-  if (modelId) {
-    const validModels = Object.values(MODELS);
-    if (!validModels.includes(modelId)) {
-      throw new ApiError(`Invalid model ID. Valid options are: ${validModels.join(', ')}`, 400);
-    }
-  }
-  
-  // Validate resolution if provided
-  if (resolution) {
-    const validResolutions = Object.keys(RESOLUTIONS);
-    if (!validResolutions.includes(resolution)) {
-      throw new ApiError(`Invalid resolution. Valid options are: ${validResolutions.join(', ')}`, 400);
+    // Validate required parameters
+    if (!imageParams.prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
     }
     
-    // Log the selected resolution for debugging
-    console.log(`Client requested resolution: ${resolution} (dimensions: ${RESOLUTIONS[resolution].width}x${RESOLUTIONS[resolution].height})`);
-  }
-  
-  // Handle specific aspect ratio requests
-  if (req.body.aspectRatio) {
-    const aspectRatio = req.body.aspectRatio;
-    // Map common aspect ratio strings to our resolution constants
-    let mappedResolution;
+    // Use the new createImage function
+    const result = await createImage(userId, imageParams);
     
-    switch (aspectRatio) {
-      case '16:9':
-        mappedResolution = 'LANDSCAPE';
-        break;
-      case '9:16':
-        mappedResolution = 'PORTRAIT';
-        break;
-      case '4:3':
-        mappedResolution = 'RATIO_4_3';
-        break;
-      case '1:1':
-        mappedResolution = 'SQUARE';
-        break;
-      default:
-        // If not a standard ratio, keep the resolution as is
-        break;
-    }
-    
-    if (mappedResolution) {
-      console.log(`Mapped aspect ratio ${aspectRatio} to resolution ${mappedResolution}`);
-      resolution = mappedResolution;
-    }
-  }
-
-  // Validate style if provided
-  if (style) {
-    // Handle both single style and comma-separated style list (will use the first valid style)
-    const requestedStyles = style.split(',').map(s => s.trim());
-    
-    const validStyles = Object.values(STYLES);
-    let validStyleFound = false;
-    
-    for (const requestedStyle of requestedStyles) {
-      if (validStyles.includes(requestedStyle) || requestedStyle === 'null') {
-        validStyleFound = true;
-        break;
+    if (result.error) {
+      // Handle specific error codes
+      if (result.code === 'DAILY_LIMIT_REACHED' || result.code === 'NO_CREDITS_NO_FREE_GENERATIONS') {
+        return res.status(403).json({ error: result.error, code: result.code });
       }
+      return res.status(400).json({ error: result.error });
     }
     
-    if (!validStyleFound) {
-      throw new ApiError(`Invalid style. Valid options are: ${validStyles.filter(s => s !== null).join(', ')}`, 400);
+    // Add a message about quality restrictions for free generations
+    if (result.meta && result.meta.free_generations) {
+      result.message = "This is a free generation with limited quality (512x512) and watermark. Purchase credits for high-quality images.";
     }
+    
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error('Error in generateImage controller:', error);
+    return res.status(500).json({ error: 'Server error' });
   }
-
-  // Validate number of images
-  const numImages = parseInt(numberOfImages);
-  if (isNaN(numImages) || numImages < 1 || numImages > 4) {
-    throw new ApiError('Number of images must be between 1 and 4', 400);
-  }
-  
-  // Generate the image
-  const result = await generateAndStoreImage({
-    prompt,
-    negativePrompt,
-    generationType,
-    modelId,
-    resolution,
-    cfgScale,
-    steps,
-    style,
-    numberOfImages: numImages,
-    userId: req.user.id
-  });
-  
-  res.status(201).json(result);
-});
+};
 
 /**
  * @desc    Get user's generated images

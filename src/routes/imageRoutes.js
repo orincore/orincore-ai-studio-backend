@@ -1,4 +1,5 @@
 const express = require('express');
+const router = express.Router();
 const { 
   generateImage,
   getImages,
@@ -10,17 +11,16 @@ const {
 } = require('../controllers/imageController');
 const { protect } = require('../middlewares/authMiddleware');
 
-const router = express.Router();
-
-// All routes are protected
+// Apply auth middleware to all routes
 router.use(protect);
 
+// Image generation routes
 router.post('/generate', generateImage);
-router.post('/suggest-styles', suggestStyles);
-router.post('/analyze-prompt', analyzePrompt);
 router.get('/', getImages);
 router.get('/options', getImageOptions);
 router.get('/:id', getImage);
 router.delete('/:id', removeImage);
+router.post('/suggest-styles', suggestStyles);
+router.post('/analyze-prompt', analyzePrompt);
 
 module.exports = router; 

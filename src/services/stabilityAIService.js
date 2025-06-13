@@ -57,9 +57,9 @@ const DEFAULT_MODEL_CONFIG = {
 
 // Define image resolutions
 const RESOLUTIONS = {
-  NORMAL: { width: 512, height: 512 },
+  NORMAL: { width: 512, height: 512 },  // Free user resolution
   SQUARE: { width: 1024, height: 1024 },
-  HD: { width: 1024, height: 1024 },
+  HD: { width: 1024, height: 1024 },    // Paid user default resolution
   PORTRAIT: { width: 640, height: 1024 },
   LANDSCAPE: { width: 1024, height: 640 },
   WALLPAPER_HD: { width: 1344, height: 768 },
@@ -106,7 +106,7 @@ const GENERATION_TYPES = {
     name: 'Text-to-Image Generator',
     description: 'Generate images from text descriptions',
     defaultModel: MODELS.STABLE_DIFFUSION_XL,
-    defaultResolution: 'LANDSCAPE',
+    defaultResolution: 'HD',
     promptPrefix: 'high quality, detailed, ',
     promptSuffix: ', masterpiece, photorealistic, 8k', 
     negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry, amateur, bad proportions, watermark'
@@ -115,7 +115,7 @@ const GENERATION_TYPES = {
     name: 'AI Anime Generator',
     description: 'Anime style generations',
     defaultModel: MODELS.STABLE_DIFFUSION_XL,
-    defaultResolution: 'NORMAL',
+    defaultResolution: 'HD',
     promptPrefix: 'anime style, manga, detailed, 2D, ',
     promptSuffix: ', vibrant colors, clean lines, anime illustration, japanese anime style',
     negativePrompt: 'ugly, deformed, disfigured, poor quality, low quality, blurry, western, photorealistic, 3D, realistic'
@@ -205,7 +205,7 @@ const GENERATION_TYPES = {
     name: 'Image-to-Image Generator',
     description: 'Transform existing images with new styles or modifications',
     defaultModel: MODELS.STABLE_DIFFUSION_XL,
-    defaultResolution: 'SQUARE',
+    defaultResolution: 'HD',
     promptPrefix: '',
     promptSuffix: ', modified version, reimagined',
     negativePrompt: 'poor quality, low quality, blurry, distorted, watermark'
@@ -428,12 +428,58 @@ const service = new StabilityAIService();
 
 // Static method that uses the instance method
 const generateImage = async (options) => {
-  // Validate prompt is present
-  if (!options.prompt || options.prompt.trim() === '') {
-    throw new ApiError('Prompt is required for image generation', 400);
+  try {
+    // Validate prompt is present
+    if (!options.prompt || options.prompt.trim() === '') {
+      throw new ApiError('Prompt is required for image generation', 400);
+    }
+    
+    // Call the service instance method
+    const result = await service.generateImage(options);
+    
+    // Process the result to return a simpler format
+    if (result.success && result.images && result.images.length > 0) {
+      const image = result.images[0];
+      
+      // Create a data URL from the base64 image
+      const imageUrl = `data:image/png;base64,${image.base64}`;
+      
+      return {
+        imageUrl,
+        seed: image.seed,
+        finish_reason: image.finishReason,
+        parameters: result.parameters
+      };
+    } else {
+      throw new Error('No images were generated');
+    }
+  } catch (error) {
+    console.error('Error in generateImage:', error);
+    
+    // Handle Axios errors specifically
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error('API Error Response:', error.response.data);
+      return {
+        error: `API Error: ${error.response.data.message || JSON.stringify(error.response.data)}`,
+        status: error.response.status
+      };
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('No response received:', error.request);
+      return {
+        error: 'No response received from the image generation API',
+        status: 500
+      };
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      return {
+        error: `Error: ${error.message}`,
+        status: 500
+      };
+    }
   }
-  
-  return service.generateImage(options);
 };
 
 // Move these functions before the module exports
