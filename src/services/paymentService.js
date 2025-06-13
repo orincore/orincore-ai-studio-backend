@@ -2,13 +2,25 @@ const axios = require('axios');
 const { ApiError } = require('../middlewares/errorMiddleware');
 const { v4: uuidv4 } = require('uuid');
 const cashfreeConfig = require('../config/cashfreeConfig');
+const { supabase } = require('../config/supabaseClient');
 
 // Load Cashfree credentials from config
 const CASHFREE_APP_ID = cashfreeConfig.clientId;
 const CASHFREE_SECRET_KEY = cashfreeConfig.clientSecret;
 const CASHFREE_API_URL = 'https://api.cashfree.com/pg/orders';
 
-const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, notifyUrl) => {
+/**
+ * Create a new Cashfree payment order
+ * @param {string} userId - User ID
+ * @param {string} email - User email
+ * @param {number} amount - Payment amount
+ * @param {string} phone - User phone number
+ * @param {string} returnUrl - URL to redirect after payment
+ * @param {string} notifyUrl - Webhook notification URL
+ * @param {string} plan - Optional plan type (e.g., 'rs2000')
+ * @returns {Promise<Object>} - Order details
+ */
+const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, notifyUrl, plan = null) => {
   try {
     const orderId = uuidv4();
 
@@ -20,6 +32,20 @@ const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, noti
       'x-client-secret': CASHFREE_SECRET_KEY
     };
 
+    // Determine order note and tags based on plan
+    let orderNote = 'Credit Purchase';
+    let orderTags = [];
+    
+    if (plan) {
+      if (plan.toLowerCase() === 'rs2000') {
+        orderNote = 'RS2000 Plan Purchase';
+        orderTags = ['plan', 'RS2000'];
+      } else {
+        orderNote = `${plan.toUpperCase()} Plan Purchase`;
+        orderTags = ['plan', plan.toUpperCase()];
+      }
+    }
+
     // Prepare request body, injecting the dynamic URLs
     const body = {
       order_id: orderId,
@@ -30,10 +56,12 @@ const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, noti
         customer_email: email,
         customer_phone: phone
       },
-      order_note: 'Credit Purchase',
+      order_note: orderNote,
+      order_tags: orderTags,
       order_meta: {
         return_url: returnUrl,
-        notify_url: notifyUrl
+        notify_url: notifyUrl,
+        plan: plan
       }
     };
 
@@ -44,6 +72,10 @@ const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, noti
 
     if (response.data?.payment_session_id) {
       console.log('Order created successfully:', JSON.stringify(response.data));
+      
+      // Record the payment order in the database
+      await recordPaymentOrder(orderId, userId, amount, 'INR', orderNote, { plan, tags: orderTags });
+      
       return {
         order_id: orderId,
         cf_order_id: response.data.cf_order_id,
@@ -69,6 +101,48 @@ const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, noti
   }
 };
 
+/**
+ * Record a payment order in the database
+ * @param {string} orderId - Order ID
+ * @param {string} userId - User ID
+ * @param {number} amount - Payment amount
+ * @param {string} currency - Currency code
+ * @param {string} notes - Order notes
+ * @param {Object} metadata - Additional metadata
+ * @returns {Promise<Object>} - Recorded payment data
+ */
+const recordPaymentOrder = async (orderId, userId, amount, currency = 'INR', notes = '', metadata = {}) => {
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .insert({
+        order_id: orderId,
+        user_id: userId,
+        amount,
+        currency,
+        status: 'PENDING',
+        notes,
+        metadata
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error recording payment order:', error);
+      // Don't throw here, just log the error
+      // This shouldn't block the payment flow
+    } else {
+      console.log(`Payment order recorded: ${orderId}`);
+    }
+    
+    return data;
+  } catch (err) {
+    console.error('Error recording payment order:', err);
+    // Don't throw here, just log the error
+  }
+};
+
 module.exports = {
-  createCashfreeOrder
+  createCashfreeOrder,
+  recordPaymentOrder
 };

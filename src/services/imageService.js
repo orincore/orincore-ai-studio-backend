@@ -5,6 +5,7 @@ const { deductCredits, getCreditCost } = require('./creditService');
 const { ApiError } = require('../middlewares/errorMiddleware');
 const { v4: uuidv4 } = require('uuid');
 const { getCloudinaryFolder } = require('../utils/imageUtils');
+const { checkDailyImageLimit } = require('./planService');
 
 /**
  * Generate an image and store it in Cloudinary and Supabase
@@ -37,6 +38,12 @@ const generateAndStoreImage = async ({
   let creditCost;
   
   try {
+    // Check if user has reached their daily image generation limit
+    const limitCheck = await checkDailyImageLimit(userId);
+    if (limitCheck.hasReachedLimit) {
+      throw new ApiError(`Daily image generation limit reached (${limitCheck.count}/${limitCheck.limit}). Please try again tomorrow or upgrade your plan.`, 429);
+    }
+
     // Determine the actual resolution to use (either provided or default for generation type)
     const actualResolution = resolution || (GENERATION_TYPES[generationType]?.defaultResolution) || 'NORMAL';
     

@@ -6,6 +6,29 @@ const cashfreeConfig = require('../config/cashfreeConfig');
 
 const CASHFREE_CLIENT_SECRET = cashfreeConfig.clientSecret;
 
+/**
+ * Verify Cashfree webhook signature
+ * @param {Buffer|string} body - Raw request body
+ * @param {string} signature - Signature from headers
+ * @returns {boolean} - Whether signature is valid
+ */
+const verifyCashfreeSignature = (body, signature) => {
+  if (!signature) return false;
+  
+  try {
+    const bodyStr = typeof body === 'string' ? body : body.toString('utf8');
+    const expectedSignature = crypto
+      .createHmac('sha256', CASHFREE_CLIENT_SECRET)
+      .update(bodyStr)
+      .digest('base64');
+    
+    return expectedSignature === signature;
+  } catch (error) {
+    console.error('Error verifying signature:', error);
+    return false;
+  }
+};
+
 const handleCashfreeWebhook = asyncHandler(async (req, res) => {
   try {
     const signature = req.headers['x-cf-signature'];
@@ -29,6 +52,7 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
     const userId = payload.data.customer.customer_id;
     const email = payload.data.customer.customer_email;
     const paymentTime = new Date(payload.data.payment.payment_completion_time);
+    const orderNote = payload.data.order.order_note || '';
 
     console.log(`💰 Processing payment: Order ${orderId}, Amount ₹${orderAmount}, Status ${paymentStatus}`);
 
@@ -65,22 +89,98 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
     }
 
     console.log(`✅ Transaction recorded for order ${orderId}`);
+    
+    // Update payment order status if it exists
+    const { error: updatePaymentError } = await supabase
+      .from('payments')
+      .update({ 
+        status: paymentStatus,
+        payment_method: payload.data.payment.payment_method,
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_id', orderId);
+      
+    if (updatePaymentError) {
+      console.error(`❌ Failed to update payment order status: ${updatePaymentError.message}`);
+    } else {
+      console.log(`✅ Payment order status updated to ${paymentStatus}`);
+    }
 
     // Handle payment status
     if (paymentStatus === 'SUCCESS') {
-      // Add credits to user's account
-      const { error: creditError } = await supabase
-        .rpc('add_credits', {
-          user_id: userId,
-          credits_to_add: orderAmount
-        });
+      // Check if this is an RS2000 plan purchase
+      const isRS2000Plan = orderNote.includes('RS2000') || 
+                          (orderAmount === 2000 && (orderNote.includes('plan') || payload.data.order.order_tags?.includes('plan'))) || 
+                          payload.data.order.order_tags?.includes('RS2000');
+      
+      if (isRS2000Plan) {
+        console.log(`✅ RS2000 plan purchase detected for user ${userId}`);
+        
+        // Update user to professional role and plan
+        const now = new Date();
+        const expiryDate = new Date(now);
+        expiryDate.setDate(now.getDate() + 30); // 30 days plan duration
+        
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            current_plan: 'professional',
+            plan_expiry: expiryDate.toISOString(),
+            role: 'professional'
+          })
+          .eq('id', userId);
+        
+        if (updateError) {
+          console.error('❌ Failed to update user to professional:', updateError);
+        } else {
+          console.log(`✅ User ${userId} upgraded to professional with RS2000 plan`);
+        }
+      } else {
+        // Regular payment - Add credits to user's account
+        // Get user's current credit balance
+        const { data: userData, error: userDataError } = await supabase
+          .from('profiles')
+          .select('credit_balance')
+          .eq('id', userId)
+          .single();
+          
+        if (userDataError) {
+          console.error('❌ Failed to get user data:', userDataError);
+          throw new ApiError('Failed to get user data', 500);
+        }
+        
+        const currentCredits = userData.credit_balance || 0;
+        const newCredits = currentCredits + orderAmount;
+        
+        // Update user's credit balance
+        const { error: creditError } = await supabase
+          .from('profiles')
+          .update({ credit_balance: newCredits })
+          .eq('id', userId);
 
-      if (creditError) {
-        console.error('❌ Failed to add credits:', creditError);
-        throw new ApiError('Failed to add credits to user account', 500);
+        if (creditError) {
+          console.error('❌ Failed to add credits:', creditError);
+          throw new ApiError('Failed to add credits to user account', 500);
+        }
+
+        // Log the credit transaction
+        const { error: transactionError } = await supabase
+          .from('credit_transactions')
+          .insert({
+            user_id: userId,
+            amount: orderAmount,
+            type: 'credit',
+            source: 'payment',
+            reference_id: orderId,
+            balance_after: newCredits
+          });
+
+        if (transactionError) {
+          console.error('❌ Failed to log credit transaction:', transactionError);
+        }
+
+        console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, new balance: ${newCredits}`);
       }
-
-      console.log(`✅ Added ₹${orderAmount} credits to user ${userId}`);
     } else {
       console.log(`ℹ️ Payment status ${paymentStatus} for order ${orderId} - no credits added`);
     }
@@ -92,30 +192,7 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
   }
 });
 
-function verifyCashfreeSignature(payload, signature) {
-  if (!CASHFREE_CLIENT_SECRET) {
-    console.error('❌ CASHFREE_CLIENT_SECRET is not configured');
-    return false;
-  }
-
-  try {
-    const expectedSignature = crypto
-      .createHmac('sha256', CASHFREE_CLIENT_SECRET)
-      .update(payload)
-      .digest('base64');
-
-    return signature === expectedSignature;
-  } catch (error) {
-    console.error('❌ Error verifying signature:', error);
-    return false;
-  }
-}
-
 module.exports = {
-  handleCashfreeWebhook
-};
-
-
-module.exports = {
-  handleCashfreeWebhook
+  handleCashfreeWebhook,
+  verifyCashfreeSignature
 };

@@ -74,7 +74,8 @@ const RESOLUTIONS = {
   THUMBNAIL: { width: 384, height: 384 },
   WIDE: { width: 768, height: 512 },
   TALL: { width: 512, height: 768 },
-  WALLPAPER_MOBILE: { width: 1080, height: 1920 }
+  WALLPAPER_MOBILE: { width: 1080, height: 1920 },
+  UHD_4K: { width: 2048, height: 1536 }  // New 4K ultra HD resolution
 };
 
 // Define available style presets
