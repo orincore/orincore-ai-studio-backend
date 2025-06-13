@@ -1,27 +1,24 @@
+// Load .env variables
 require('dotenv').config();
 
-const SANDBOX_URL = 'https://sandbox.cashfree.com/pg';
-const PRODUCTION_URL = 'https://api.cashfree.com/pg';
-
-const environment = process.env.NODE_ENV === 'production' ? 'PROD' : 'TEST';
-const baseUrl = process.env.NODE_ENV === 'production' ? PRODUCTION_URL : SANDBOX_URL;
-
-// Validate environment variables
+// Extract environment variables
 const clientId = process.env.CASHFREE_CLIENT_ID;
 const clientSecret = process.env.CASHFREE_CLIENT_SECRET;
+const environment = process.env.CASHFREE_ENV || 'sandbox';  // default to sandbox if not provided
 
-if (!clientId || !clientSecret) {
-  throw new Error('Cashfree credentials are not properly configured');
+// Determine Base URL based on environment
+let baseUrl;
+if (environment === 'production') {
+  baseUrl = 'https://api.cashfree.com/pg/orders';
+} else {
+  baseUrl = 'https://sandbox.cashfree.com/pg/orders';
 }
 
-// // Validate that we're using the correct type of credentials for the environment
-// if (environment === 'TEST' && clientSecret.startsWith('cfsk_ma_prod_')) {
-//   throw new Error('Using production credentials in test environment. Please use TEST credentials for sandbox.');
-// }
-
-// if (environment === 'PROD' && clientSecret.startsWith('cfsk_ma_test_')) {
-//   throw new Error('Using test credentials in production environment. Please use PROD credentials for production.');
-// }
+// Validate required credentials
+if (!clientId || !clientSecret) {
+  console.error('❌ Missing Cashfree Client ID or Secret Key in environment variables');
+  throw new Error('Cashfree credentials are not properly configured');
+}
 
 module.exports = {
   clientId,
