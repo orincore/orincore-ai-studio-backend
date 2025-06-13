@@ -27,9 +27,6 @@ const paymentStatusRoutes = require('./routes/paymentStatusRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Apply raw body parser for webhook routes
-app.use('/api/webhooks', rawBodyParser);
-
 // Security middleware
 app.use(helmet());
 
@@ -85,7 +82,10 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// ✅ Apply JSON parser AFTER webhook raw body middleware
+// IMPORTANT: Apply raw body parser for webhook routes BEFORE any other body parsers
+app.use('/api/webhooks', rawBodyParser);
+
+// Apply JSON parser AFTER webhook raw body middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

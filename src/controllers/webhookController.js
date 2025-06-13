@@ -108,50 +108,106 @@ const logWebhookPayloadDetails = (payload) => {
 
 const handleCashfreeWebhook = asyncHandler(async (req, res) => {
   try {
+    console.log('📝 Webhook received at:', new Date().toISOString());
+    
     const signature = req.headers['x-cf-signature'];
     // Use rawBody if available, otherwise fall back to body
     const rawBody = req.rawBody || req.body;
     
     // Log headers for debugging
     console.log('📝 Webhook headers:', JSON.stringify(req.headers, null, 2));
+    console.log('📝 Raw body type:', typeof rawBody, Buffer.isBuffer(rawBody) ? '(Buffer)' : '');
     
     // Verify signature
     const isValid = verifyCashfreeSignature(rawBody, signature);
     if (!isValid && !DEVELOPMENT_MODE) {
       console.error('❌ Invalid Cashfree webhook signature');
-      throw new ApiError('Invalid Cashfree webhook signature', 401);
+      // Still return 200 but with error message
+      return res.status(200).json({ 
+        received: true, 
+        error: 'Invalid signature',
+        success: false
+      });
     }
 
     // Parse the payload
     let payload;
     try {
-      if (typeof rawBody === 'string') {
+      if (Buffer.isBuffer(rawBody)) {
+        payload = JSON.parse(rawBody.toString('utf8'));
+      } else if (typeof rawBody === 'string') {
         payload = JSON.parse(rawBody);
       } else {
         payload = rawBody; // Already parsed
       }
     } catch (parseError) {
       console.error('❌ Failed to parse webhook payload:', parseError);
-      throw new ApiError('Invalid webhook payload format', 400);
+      return res.status(200).json({ 
+        received: true, 
+        error: 'Invalid payload format',
+        success: false
+      });
     }
     
     console.log('📝 Received webhook payload:', JSON.stringify(payload, null, 2));
     
     // Log detailed webhook payload structure
     logWebhookPayloadDetails(payload);
+  
+    // Extract payment details with flexible structure handling
+    let orderId, orderAmount, paymentStatus, paymentId, userId, email, paymentTime, orderNote, orderTags;
 
-    // Extract payment details
-    const orderId = payload.data.order.order_id;
-    const orderAmount = parseFloat(payload.data.order.order_amount);
-    const paymentStatus = payload.data.payment.payment_status;
-    const paymentId = payload.data.payment.cf_payment_id;
-    const userId = payload.data.customer.customer_id;
-    const email = payload.data.customer.customer_email;
-    const paymentTime = new Date(payload.data.payment.payment_completion_time);
-    const orderNote = payload.data.order.order_note || '';
-    const orderTags = payload.data.order.order_tags || {};
+    // Handle different payload structures
+    if (payload.data) {
+      // Standard webhook format
+      orderId = payload.data.order?.order_id;
+      orderAmount = parseFloat(payload.data.order?.order_amount || 0);
+      paymentStatus = payload.data.payment?.payment_status;
+      paymentId = payload.data.payment?.cf_payment_id;
+      userId = payload.data.customer?.customer_id;
+      email = payload.data.customer?.customer_email;
+      paymentTime = payload.data.payment?.payment_completion_time ? 
+        new Date(payload.data.payment.payment_completion_time) : new Date();
+      orderNote = payload.data.order?.order_note || '';
+      orderTags = payload.data.order?.order_tags || {};
+    } else if (payload.order_id) {
+      // Test webhook or alternative format
+      orderId = payload.order_id;
+      orderAmount = parseFloat(payload.order_amount || 0);
+      paymentStatus = payload.payment_status || 'TEST';
+      paymentId = payload.payment_id || `test_${Date.now()}`;
+      userId = payload.customer_id;
+      email = payload.customer_email;
+      paymentTime = new Date();
+      orderNote = payload.order_note || '';
+      orderTags = payload.order_tags || {};
+    } else {
+      // Unknown format
+      console.error('❌ Unknown webhook payload format');
+      return res.status(200).json({ 
+        received: true, 
+        error: 'Unknown payload format',
+        success: false
+      });
+    }
+
+    // Validate required fields
+    if (!orderId) {
+      console.error('❌ Missing order ID in webhook payload');
+      return res.status(200).json({ 
+        received: true, 
+        error: 'Missing order ID',
+        success: false
+      });
+    }
 
     console.log(`💰 Processing payment: Order ${orderId}, Amount ₹${orderAmount}, Status ${paymentStatus}`);
+
+    // If this is a test webhook with no user ID, use a test user ID
+    if (!userId && (paymentStatus === 'TEST' || DEVELOPMENT_MODE)) {
+      console.log('⚠️ Using test user ID for webhook');
+      userId = process.env.TEST_USER_ID || '00000000-0000-0000-0000-000000000000';
+    }
 
     // Check if user exists
     const { data: userData, error: userError } = await supabase
@@ -234,58 +290,75 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
         }
       } else {
         // Regular payment - Add credits to user's account
-        // Get user's current credit balance
-        const { data: userData, error: userDataError } = await supabase
-          .from('profiles')
-          .select('credit_balance')
-          .eq('id', userId)
-          .single();
+        try {
+          // Get user's current credit balance
+          const { data: userData, error: userDataError } = await supabase
+            .from('profiles')
+            .select('credit_balance')
+            .eq('id', userId)
+            .single();
           
-        if (userDataError) {
-          console.error('❌ Failed to get user data:', userDataError);
-          throw new ApiError('Failed to get user data', 500);
+          if (userDataError) {
+            console.error('❌ Failed to get user data:', userDataError);
+            throw new ApiError('Failed to get user data', 500);
+          }
+          
+          const currentCredits = userData.credit_balance || 0;
+          const newCredits = currentCredits + orderAmount;
+          
+          console.log(`💰 Adding credits: Current=${currentCredits}, Adding=${orderAmount}, New=${newCredits}`);
+          
+          // Update user's credit balance
+          const { error: creditError } = await supabase
+            .from('profiles')
+            .update({ credit_balance: newCredits })
+            .eq('id', userId);
+
+          if (creditError) {
+            console.error('❌ Failed to add credits:', creditError);
+            throw new ApiError('Failed to add credits to user account', 500);
+          }
+
+          // Log the credit transaction
+          const { error: transactionError } = await supabase
+            .from('credit_transactions')
+            .insert({
+              user_id: userId,
+              amount: orderAmount,
+              type: 'credit',
+              source: 'payment',
+              reference_id: orderId,
+              balance_after: newCredits
+            });
+
+          if (transactionError) {
+            console.error('❌ Failed to log credit transaction:', transactionError);
+          }
+
+          console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, new balance: ${newCredits}`);
+        } catch (error) {
+          console.error('❌ Error processing credit addition:', error);
+          // Don't throw here, we still want to return 200 to Cashfree
         }
-        
-        const currentCredits = userData.credit_balance || 0;
-        const newCredits = currentCredits + orderAmount;
-        
-        // Update user's credit balance
-        const { error: creditError } = await supabase
-          .from('profiles')
-          .update({ credit_balance: newCredits })
-          .eq('id', userId);
-
-        if (creditError) {
-          console.error('❌ Failed to add credits:', creditError);
-          throw new ApiError('Failed to add credits to user account', 500);
-        }
-
-        // Log the credit transaction
-        const { error: transactionError } = await supabase
-          .from('credit_transactions')
-          .insert({
-            user_id: userId,
-            amount: orderAmount,
-            type: 'credit',
-            source: 'payment',
-            reference_id: orderId,
-            balance_after: newCredits
-          });
-
-        if (transactionError) {
-          console.error('❌ Failed to log credit transaction:', transactionError);
-        }
-
-        console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, new balance: ${newCredits}`);
       }
+    } else if (paymentStatus === 'TEST') {
+      // Handle test webhooks from Cashfree
+      console.log(`🧪 Test webhook received with status: ${paymentStatus}`);
+      // Return success without processing further
     } else {
       console.log(`ℹ️ Payment status ${paymentStatus} for order ${orderId} - no credits added`);
     }
 
-    res.status(200).json({ received: true });
+    res.status(200).json({ received: true, success: true });
   } catch (error) {
     console.error('❌ Webhook processing error:', error);
-    throw new ApiError(error.message || 'Failed to process webhook', error.status || 500);
+    // Always return 200 OK to Cashfree to prevent retries
+    // but include error message in the response
+    return res.status(200).json({ 
+      received: true, 
+      error: error.message || 'Error processing webhook',
+      success: false
+    });
   }
 });
 

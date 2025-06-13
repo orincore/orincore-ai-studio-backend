@@ -4,31 +4,36 @@
  * but we need the raw body to verify webhook signatures
  */
 const rawBodyParser = (req, res, next) => {
-  // Skip if not a webhook route
-  if (!req.originalUrl.includes('/webhooks/')) {
+  // Skip if not a webhook route or if body has already been parsed/consumed
+  if (!req.originalUrl.includes('/webhooks/') || req.body || !req.readable) {
     return next();
   }
   
-  let data = '';
+  // Create a buffer to store chunks
+  const chunks = [];
   
   // Collect data chunks
   req.on('data', chunk => {
-    data += chunk;
+    chunks.push(chunk);
   });
   
   // When all data is received
   req.on('end', () => {
-    // Store raw body for signature verification
-    req.rawBody = data;
+    // Combine chunks into a single buffer
+    const buffer = Buffer.concat(chunks);
+    
+    // Store raw body as buffer for signature verification
+    req.rawBody = buffer;
     
     // If content-type is application/json, parse the body
     if (req.headers['content-type'] === 'application/json') {
       try {
+        const data = buffer.toString('utf8');
         req.body = JSON.parse(data);
       } catch (e) {
         console.error('Error parsing JSON body:', e);
         // Keep the raw data in body if parsing fails
-        req.body = data;
+        req.body = buffer;
       }
     }
     
