@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');  
 const { errorHandler } = require('./middlewares/errorMiddleware');
+const rawBodyParser = require('./middlewares/rawBodyParser');
 
 // Load environment variables
 dotenv.config();
@@ -26,8 +27,8 @@ const paymentStatusRoutes = require('./routes/paymentStatusRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ Apply raw body parser only for Cashfree Webhook BEFORE express.json()
-app.use('/api/webhooks/cashfree', bodyParser.raw({ type: 'application/json' }));
+// Apply raw body parser for webhook routes
+app.use('/api/webhooks', rawBodyParser);
 
 // Security middleware
 app.use(helmet());

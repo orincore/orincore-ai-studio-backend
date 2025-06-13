@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const cashfreeConfig = require('../config/cashfreeConfig');
 
 const CASHFREE_CLIENT_SECRET = cashfreeConfig.clientSecret;
+// Set to true for development/testing to bypass signature verification
+const DEVELOPMENT_MODE = process.env.NODE_ENV !== 'production';
 
 /**
  * Verify Cashfree webhook signature
@@ -13,36 +15,130 @@ const CASHFREE_CLIENT_SECRET = cashfreeConfig.clientSecret;
  * @returns {boolean} - Whether signature is valid
  */
 const verifyCashfreeSignature = (body, signature) => {
-  if (!signature) return false;
+  // In development mode, bypass signature verification
+  if (DEVELOPMENT_MODE) {
+    console.log('⚠️ Development mode: Bypassing signature verification');
+    return true;
+  }
+  
+  if (!signature) {
+    console.error('❌ No signature provided in webhook headers');
+    return false;
+  }
   
   try {
-    const bodyStr = typeof body === 'string' ? body : body.toString('utf8');
+    // Convert body to string if it's a Buffer
+    let bodyStr;
+    if (Buffer.isBuffer(body)) {
+      bodyStr = body.toString('utf8');
+    } else if (typeof body === 'string') {
+      bodyStr = body;
+    } else if (typeof body === 'object') {
+      // If it's already parsed as JSON, stringify it again
+      bodyStr = JSON.stringify(body);
+    } else {
+      console.error('❌ Unsupported body type for signature verification:', typeof body);
+      return false;
+    }
+    
+    // Calculate expected signature
     const expectedSignature = crypto
       .createHmac('sha256', CASHFREE_CLIENT_SECRET)
       .update(bodyStr)
       .digest('base64');
     
-    return expectedSignature === signature;
+    const isValid = expectedSignature === signature;
+    
+    if (!isValid) {
+      console.error('❌ Signature verification failed:');
+      console.error('  Expected:', expectedSignature);
+      console.error('  Received:', signature);
+    }
+    
+    return isValid;
   } catch (error) {
-    console.error('Error verifying signature:', error);
+    console.error('❌ Error verifying signature:', error);
     return false;
+  }
+};
+
+/**
+ * Log webhook payload details for debugging
+ * @param {Object} payload - The webhook payload
+ */
+const logWebhookPayloadDetails = (payload) => {
+  try {
+    console.log('📝 Webhook payload structure:');
+    
+    // Check if payload has the expected structure
+    if (payload.data) {
+      console.log('✅ Payload has data property');
+      
+      if (payload.data.order) {
+        console.log('✅ Payload has order data');
+        console.log('  - Order ID:', payload.data.order.order_id);
+        console.log('  - Order Amount:', payload.data.order.order_amount);
+        console.log('  - Order Tags:', JSON.stringify(payload.data.order.order_tags));
+      } else {
+        console.log('❌ Missing order data in payload');
+      }
+      
+      if (payload.data.payment) {
+        console.log('✅ Payload has payment data');
+        console.log('  - Payment ID:', payload.data.payment.cf_payment_id);
+        console.log('  - Payment Status:', payload.data.payment.payment_status);
+      } else {
+        console.log('❌ Missing payment data in payload');
+      }
+      
+      if (payload.data.customer) {
+        console.log('✅ Payload has customer data');
+        console.log('  - Customer ID:', payload.data.customer.customer_id);
+      } else {
+        console.log('❌ Missing customer data in payload');
+      }
+    } else {
+      console.log('❌ Payload does not have expected structure');
+      console.log('Payload keys:', Object.keys(payload));
+    }
+  } catch (error) {
+    console.error('Error logging webhook payload:', error);
   }
 };
 
 const handleCashfreeWebhook = asyncHandler(async (req, res) => {
   try {
     const signature = req.headers['x-cf-signature'];
-    const rawBody = req.body;
-
+    // Use rawBody if available, otherwise fall back to body
+    const rawBody = req.rawBody || req.body;
+    
+    // Log headers for debugging
+    console.log('📝 Webhook headers:', JSON.stringify(req.headers, null, 2));
+    
     // Verify signature
     const isValid = verifyCashfreeSignature(rawBody, signature);
-    if (!isValid) {
+    if (!isValid && !DEVELOPMENT_MODE) {
       console.error('❌ Invalid Cashfree webhook signature');
       throw new ApiError('Invalid Cashfree webhook signature', 401);
     }
 
-    const payload = JSON.parse(rawBody.toString('utf8'));
+    // Parse the payload
+    let payload;
+    try {
+      if (typeof rawBody === 'string') {
+        payload = JSON.parse(rawBody);
+      } else {
+        payload = rawBody; // Already parsed
+      }
+    } catch (parseError) {
+      console.error('❌ Failed to parse webhook payload:', parseError);
+      throw new ApiError('Invalid webhook payload format', 400);
+    }
+    
     console.log('📝 Received webhook payload:', JSON.stringify(payload, null, 2));
+    
+    // Log detailed webhook payload structure
+    logWebhookPayloadDetails(payload);
 
     // Extract payment details
     const orderId = payload.data.order.order_id;
@@ -53,6 +149,7 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
     const email = payload.data.customer.customer_email;
     const paymentTime = new Date(payload.data.payment.payment_completion_time);
     const orderNote = payload.data.order.order_note || '';
+    const orderTags = payload.data.order.order_tags || {};
 
     console.log(`💰 Processing payment: Order ${orderId}, Amount ₹${orderAmount}, Status ${paymentStatus}`);
 
@@ -110,8 +207,8 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
     if (paymentStatus === 'SUCCESS') {
       // Check if this is an RS2000 plan purchase
       const isRS2000Plan = orderNote.includes('RS2000') || 
-                          (orderAmount === 2000 && (orderNote.includes('plan') || payload.data.order.order_tags?.includes('plan'))) || 
-                          payload.data.order.order_tags?.includes('RS2000');
+                          (orderAmount === 2000 && (orderNote.includes('plan') || orderTags.purchase_type === 'plan')) || 
+                          orderTags.plan_type === 'RS2000';
       
       if (isRS2000Plan) {
         console.log(`✅ RS2000 plan purchase detected for user ${userId}`);
