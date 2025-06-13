@@ -5,7 +5,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');  
 const { errorHandler } = require('./middlewares/errorMiddleware');
-const rawBodyParser = require('./middlewares/rawBodyParser');
 
 // Load environment variables
 dotenv.config();
@@ -82,10 +81,15 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// IMPORTANT: Apply raw body parser for webhook routes BEFORE any other body parsers
-app.use('/api/webhooks', rawBodyParser);
+// IMPORTANT: Use the built-in body-parser for webhooks with raw body
+// This captures the raw body for signature verification
+app.use('/api/webhooks', bodyParser.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
-// Apply JSON parser AFTER webhook raw body middleware
+// Apply JSON parser for all other routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

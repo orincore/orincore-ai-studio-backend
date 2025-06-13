@@ -26,6 +26,11 @@ const verifyCashfreeSignature = (body, signature) => {
     return false;
   }
   
+  if (!body) {
+    console.error('❌ No body provided for signature verification');
+    return false;
+  }
+  
   try {
     // Convert body to string if it's a Buffer
     let bodyStr;
@@ -53,6 +58,9 @@ const verifyCashfreeSignature = (body, signature) => {
       console.error('❌ Signature verification failed:');
       console.error('  Expected:', expectedSignature);
       console.error('  Received:', signature);
+      console.error('  Body string (first 100 chars):', bodyStr.substring(0, 100));
+    } else {
+      console.log('✅ Signature verification successful');
     }
     
     return isValid;
@@ -111,12 +119,22 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
     console.log('📝 Webhook received at:', new Date().toISOString());
     
     const signature = req.headers['x-cf-signature'];
-    // Use rawBody if available, otherwise fall back to body
-    const rawBody = req.rawBody || req.body;
+    // The raw body is now a Buffer stored by our middleware
+    const rawBody = req.rawBody;
     
     // Log headers for debugging
     console.log('📝 Webhook headers:', JSON.stringify(req.headers, null, 2));
-    console.log('📝 Raw body type:', typeof rawBody, Buffer.isBuffer(rawBody) ? '(Buffer)' : '');
+    
+    if (!rawBody) {
+      console.error('❌ No raw body available for signature verification');
+      return res.status(200).json({ 
+        received: true, 
+        error: 'No raw body available',
+        success: false
+      });
+    }
+    
+    console.log('📝 Raw body available:', Buffer.isBuffer(rawBody), 'length:', rawBody.length);
     
     // Verify signature
     const isValid = verifyCashfreeSignature(rawBody, signature);
@@ -130,24 +148,8 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
       });
     }
 
-    // Parse the payload
-    let payload;
-    try {
-      if (Buffer.isBuffer(rawBody)) {
-        payload = JSON.parse(rawBody.toString('utf8'));
-      } else if (typeof rawBody === 'string') {
-        payload = JSON.parse(rawBody);
-      } else {
-        payload = rawBody; // Already parsed
-      }
-    } catch (parseError) {
-      console.error('❌ Failed to parse webhook payload:', parseError);
-      return res.status(200).json({ 
-        received: true, 
-        error: 'Invalid payload format',
-        success: false
-      });
-    }
+    // The body is already parsed by the JSON middleware
+    const payload = req.body;
     
     console.log('📝 Received webhook payload:', JSON.stringify(payload, null, 2));
     
