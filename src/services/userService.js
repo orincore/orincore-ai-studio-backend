@@ -100,6 +100,7 @@ const createUserProfile = async (userData, profileData = {}, ip = null) => {
       id: userData.id,
       email: userData.email,
       full_name: profileData.full_name || userData.user_metadata?.full_name || '',
+      phone: profileData.phone || userData.user_metadata?.phone || null,
       avatar_url: profileData.avatar_url || userData.user_metadata?.avatar_url || '',
       country: profileData.country || locationInfo.country || 'United States',
       country_code: profileData.country_code || locationInfo.country_code || 'US',

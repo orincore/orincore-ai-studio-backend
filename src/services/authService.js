@@ -11,10 +11,11 @@ const jwt = require('jsonwebtoken');
  * @param {string} userData.email - User email
  * @param {string} userData.password - User password
  * @param {string} userData.full_name - User's full name
+ * @param {string} userData.phone - User's phone number
  * @param {string} ip - User's IP address for location detection
  * @returns {Promise<Object>} - Auth data with user details
  */
-const registerUser = async ({ email, password, full_name }, ip = null) => {
+const registerUser = async ({ email, password, full_name, phone }, ip = null) => {
   try {
     // Register user with Supabase Auth
     const { data, error } = await supabase.auth.admin.createUser({
@@ -22,7 +23,8 @@ const registerUser = async ({ email, password, full_name }, ip = null) => {
       password,
       email_confirm: false, // Require email verification
       user_metadata: {
-        full_name
+        full_name,
+        phone
       }
     });
     

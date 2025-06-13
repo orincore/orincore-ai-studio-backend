@@ -11,6 +11,7 @@ const {
   signInWithProvider 
 } = require('../services/authService');
 const { ApiError } = require('../middlewares/errorMiddleware');
+const { isValidPhoneNumber, getPhoneValidationErrorMessage } = require('../utils/validationUtils');
 
 /**
  * @desc    Register a new user
@@ -18,18 +19,27 @@ const { ApiError } = require('../middlewares/errorMiddleware');
  * @access  Public
  */
 const register = asyncHandler(async (req, res) => {
-  const { email, password, full_name } = req.body;
+  const { email, password, full_name, phone } = req.body;
   
   // Basic validation
   if (!email || !password || !full_name) {
     throw new ApiError('Please provide email, password, and full name', 400);
+  }
+
+  // Phone number validation
+  if (!phone) {
+    throw new ApiError('Phone number is required', 400);
+  }
+  
+  if (!isValidPhoneNumber(phone)) {
+    throw new ApiError(getPhoneValidationErrorMessage(), 400);
   }
   
   // Get client IP for location detection
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   
   // Register the user
-  const result = await registerUser({ email, password, full_name }, ip);
+  const result = await registerUser({ email, password, full_name, phone }, ip);
   
   res.status(201).json(result);
 });

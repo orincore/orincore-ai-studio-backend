@@ -11,6 +11,7 @@ const {
   getCreditHistory 
 } = require('../services/creditService');
 const { ApiError } = require('../middlewares/errorMiddleware');
+const { isValidPhoneNumber, getPhoneValidationErrorMessage } = require('../utils/validationUtils');
 
 /**
  * @desc    Get current user profile
@@ -43,7 +44,7 @@ const updateProfile = asyncHandler(async (req, res) => {
     'language',
     'bio',
     'website',
-    'phone_number'
+    'phone'
   ];
   
   const updateData = {};
@@ -55,6 +56,16 @@ const updateProfile = asyncHandler(async (req, res) => {
   
   if (Object.keys(updateData).length === 0) {
     throw new ApiError('No valid fields to update', 400);
+  }
+
+  // Validate phone number if provided
+  if (updateData.phone !== undefined) {
+    if (!updateData.phone) {
+      throw new ApiError('Phone number cannot be empty', 400);
+    }
+    if (!isValidPhoneNumber(updateData.phone)) {
+      throw new ApiError(getPhoneValidationErrorMessage(), 400);
+    }
   }
   
   const updatedUser = await updateUserProfile(req.user.id, updateData);
@@ -199,4 +210,4 @@ module.exports = {
   updateUserRole,
   getUserFullProfile,
   updateAccountSettings
-}; 
+};
