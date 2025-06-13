@@ -33,8 +33,8 @@ const createCashfreeOrder = async (userId, email, amount, phone) => {
       },
       order_note: 'Credit Purchase',
       order_meta: {
-        return_url: 'https://studio.orincore.com/payment-success',
-        notify_url: 'https://studio.orincore.com/payment-webhook'
+        return_url: 'https://studioapi.orincore.com/api/payments/success',  // Updated return URL
+        notify_url: 'https://studioapi.orincore.com/api/webhooks/cashfree'  // Updated webhook URL
       }
     };
 

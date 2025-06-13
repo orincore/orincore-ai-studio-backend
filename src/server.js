@@ -20,7 +20,8 @@ const thumbnailRoutes = require('./routes/thumbnailRoutes');
 const posterRoutes = require('./routes/posterRoutes');
 const logoRoutes = require('./routes/logoRoutes');
 const planRoutes = require('./routes/planRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');  
+const paymentRoutes = require('./routes/paymentRoutes');
+const paymentStatusRoutes = require('./routes/paymentStatusRoutes');
 
 
 // Initialize express app
@@ -34,7 +35,7 @@ app.use('/api/webhooks/cashfree', bodyParser.raw({ type: '*/*' }));
 app.use(helmet());
 app.use(cors({
   origin: function(origin, callback) {
-    const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173', 'https://studio.orincore.com'];
+    const allowedOrigins = ['*'];
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
       callback(null, true);
@@ -83,7 +84,8 @@ app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/posters', posterRoutes);
 app.use('/api/logos', logoRoutes);
 app.use('/api/plans', planRoutes);
-app.use('/api/payment', paymentRoutes);
+app.use('/api/payments', paymentRoutes);  // Changed to plural for consistency
+app.use('/api/payments', paymentStatusRoutes);  // Payment success/failure handling
 
 // Health check endpoint
 app.get('/health', (req, res) => {

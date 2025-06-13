@@ -3,10 +3,18 @@ const { supabase } = require('../config/supabaseClient');
 
 const handlePaymentSuccess = async (req, res) => {
   try {
-    const { order_id } = req.query;
+    const { order_id, payment_id, txTime } = req.query;
+
+    console.log('Payment success callback received:', {
+      order_id,
+      payment_id,
+      txTime
+    });
 
     if (!order_id) {
-      throw new ApiError('Order ID is required', 400);
+      console.error('❌ No order_id in success callback');
+      // Redirect to frontend with error
+      return res.redirect('https://studio.orincore.com/payment?status=error&message=invalid_order');
     }
 
     // Get transaction status from database
@@ -18,24 +26,25 @@ const handlePaymentSuccess = async (req, res) => {
 
     if (error) {
       console.error('Error fetching transaction:', error);
-      throw new ApiError('Failed to fetch transaction status', 500);
+      return res.redirect('https://studio.orincore.com/payment?status=error&message=transaction_not_found');
     }
 
-    // Return transaction status
-    res.status(200).json({
-      success: true,
-      data: {
-        order_id: transaction.order_id,
-        status: transaction.status,
-        amount: transaction.amount,
-        payment_time: transaction.payment_time
-      }
-    });
+    // Redirect back to frontend with status
+    const redirectUrl = new URL('https://studio.orincore.com/payment');
+    redirectUrl.searchParams.append('status', transaction.status.toLowerCase());
+    redirectUrl.searchParams.append('order_id', order_id);
+    redirectUrl.searchParams.append('amount', transaction.amount);
+
+    res.redirect(redirectUrl.toString());
 
   } catch (err) {
     console.error('❌ Error handling payment success:', err);
-    throw new ApiError(err.message || 'Failed to handle payment success', err.status || 500);
+    return res.redirect('https://studio.orincore.com/payment?status=error&message=server_error');
   }
+};
+
+module.exports = {
+  handlePaymentSuccess
 };
 
 module.exports = {
