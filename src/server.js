@@ -35,16 +35,34 @@ app.use('/api/webhooks/cashfree', bodyParser.raw({ type: '*/*' }));
 app.use(helmet());
 app.use(cors({
   origin: function(origin, callback) {
-    const allowedOrigins = ['*'];
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://studio.orincore.com'
+    ];
+    if (!origin || process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'X-Requested-With', 'X-Auth-Token', 'Origin', 'Accept-Language'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'Cache-Control',
+    'X-Requested-With',
+    'X-Auth-Token',
+    'Origin',
+    'Accept-Language',
+    'x-api-version',
+    'x-client-id',
+    'x-client-secret'
+  ],
   exposedHeaders: ['Content-Length', 'Content-Type'],
   credentials: true,
   maxAge: 86400
@@ -62,17 +80,13 @@ app.use(limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Development-only middleware to allow all origins
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    next();
-  });
-  console.log('CORS fallback enabled for development - allowing all origins');
-}
+// Handle OPTIONS requests
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
