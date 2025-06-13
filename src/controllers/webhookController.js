@@ -264,26 +264,55 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
       }
     } else {
       // Record the transaction
-      const { error: insertError } = await supabase
-        .from('payment_transactions')
-        .insert({
-          order_id: orderId,
-          user_id: userId,
-          amount: orderAmount,
-          currency: 'INR',
-          email: email,
-          payment_id: paymentId,
-          status: paymentStatus,
-          payment_time: paymentTime.toISOString(),
-          payment_data: payload.data
-        });
+      try {
+        // Try to insert the transaction
+        const { error: insertError } = await supabase
+          .from('payment_transactions')
+          .insert({
+            order_id: orderId,
+            user_id: userId,
+            amount: orderAmount,
+            currency: 'INR',
+            email: email,
+            payment_id: paymentId,
+            status: paymentStatus,
+            payment_time: paymentTime.toISOString(),
+            payment_data: payload.data
+          });
 
-      if (insertError) {
-        console.error('❌ Failed to insert payment transaction:', insertError);
-        throw new ApiError('Failed to record payment transaction', 500);
+        if (insertError) {
+          // Check if this is a duplicate key error
+          if (insertError.code === '23505') {
+            console.log(`⚠️ Duplicate payment transaction detected for ${orderId}/${paymentId}, updating instead`);
+            
+            // Update the existing record instead
+            const { error: updateError } = await supabase
+              .from('payment_transactions')
+              .update({
+                status: paymentStatus,
+                payment_data: payload.data,
+                updated_at: new Date().toISOString()
+              })
+              .eq('order_id', orderId)
+              .eq('payment_id', paymentId);
+            
+            if (updateError) {
+              console.error('❌ Failed to update payment transaction:', updateError);
+              // Don't throw here, continue processing
+            } else {
+              console.log(`✅ Updated existing transaction for order ${orderId}`);
+            }
+          } else {
+            console.error('❌ Failed to insert payment transaction:', insertError);
+            throw new ApiError('Failed to record payment transaction', 500);
+          }
+        } else {
+          console.log(`✅ Transaction recorded for order ${orderId}`);
+        }
+      } catch (transactionError) {
+        // Log the error but continue processing the webhook
+        console.error('❌ Error recording transaction:', transactionError);
       }
-
-      console.log(`✅ Transaction recorded for order ${orderId}`);
     }
     
     // Update payment order status if it exists
