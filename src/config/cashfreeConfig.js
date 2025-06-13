@@ -4,7 +4,7 @@ require('dotenv').config();
 // Extract environment variables
 const clientId = process.env.CASHFREE_CLIENT_ID;
 const clientSecret = process.env.CASHFREE_CLIENT_SECRET;
-const environment = process.env.CASHFREE_ENV || 'production';  // default to sandbox if not provided
+const environment = 'production';  
 
 // Determine Base URL based on environment
 const baseUrl = 'https://api.cashfree.com';
