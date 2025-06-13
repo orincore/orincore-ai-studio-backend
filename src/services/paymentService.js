@@ -34,16 +34,19 @@ const createCashfreeOrder = async (userId, email, amount, phone, returnUrl, noti
 
     // Determine order note and tags based on plan
     let orderNote = 'Credit Purchase';
-    let orderTags = [];
+    let orderTags = {};
     
     if (plan) {
       if (plan.toLowerCase() === 'rs2000') {
         orderNote = 'RS2000 Plan Purchase';
-        orderTags = ['plan', 'RS2000'];
+        orderTags = { plan_type: 'RS2000', purchase_type: 'plan' };
       } else {
         orderNote = `${plan.toUpperCase()} Plan Purchase`;
-        orderTags = ['plan', plan.toUpperCase()];
+        orderTags = { plan_type: plan.toUpperCase(), purchase_type: 'plan' };
       }
+    } else {
+      // For credit purchases
+      orderTags = { purchase_type: 'credits' };
     }
 
     // Prepare request body, injecting the dynamic URLs
