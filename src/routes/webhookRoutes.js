@@ -1,13 +1,8 @@
 const express = require('express');
-const { handleLemonSqueezyWebhook } = require('../controllers/webhookController');
-const rawBodyMiddleware = require('../middlewares/rawBodyMiddleware');
-
 const router = express.Router();
+const webhookController = require('../controllers/webhookController');
 
-// Use raw body middleware for webhook verification
-router.use(rawBodyMiddleware);
+// Cashfree webhook endpoint
+router.post('/cashfree', webhookController.handleCashfreeWebhook);
 
-// Webhook routes
-router.post('/lemonsqueezy', handleLemonSqueezyWebhook);
-
-module.exports = router; 
+module.exports = router;
