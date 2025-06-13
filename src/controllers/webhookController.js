@@ -102,6 +102,9 @@ const logWebhookPayloadDetails = (payload) => {
       if (payload.data.customer) {
         console.log('✅ Payload has customer data');
         console.log('  - Customer ID:', payload.data.customer.customer_id);
+      } else if (payload.data.customer_details) {
+        console.log('✅ Payload has customer_details data');
+        console.log('  - Customer ID:', payload.data.customer_details.customer_id);
       } else {
         console.log('❌ Missing customer data in payload');
       }
@@ -166,8 +169,9 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
       orderAmount = parseFloat(payload.data.order?.order_amount || 0);
       paymentStatus = payload.data.payment?.payment_status;
       paymentId = payload.data.payment?.cf_payment_id;
-      userId = payload.data.customer?.customer_id;
-      email = payload.data.customer?.customer_email;
+      // Check both customer and customer_details fields
+      userId = payload.data.customer?.customer_id || payload.data.customer_details?.customer_id;
+      email = payload.data.customer?.customer_email || payload.data.customer_details?.customer_email;
       paymentTime = payload.data.payment?.payment_completion_time ? 
         new Date(payload.data.payment.payment_completion_time) : new Date();
       orderNote = payload.data.order?.order_note || '';
