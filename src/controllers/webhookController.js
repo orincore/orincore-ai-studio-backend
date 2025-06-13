@@ -297,51 +297,22 @@ const handleCashfreeWebhook = asyncHandler(async (req, res) => {
       } else {
         // Regular payment - Add credits to user's account
         try {
-          // Get user's current credit balance
-          const { data: userData, error: userDataError } = await supabase
-            .from('profiles')
-            .select('credit_balance')
-            .eq('id', userId)
-            .single();
+          console.log(`💰 Starting atomic credit addition for user ${userId}, amount: ${orderAmount}`);
           
-          if (userDataError) {
-            console.error('❌ Failed to get user data:', userDataError);
-            throw new ApiError('Failed to get user data', 500);
-          }
+          // Use a transaction to avoid race conditions
+          const { data: result, error: transactionError } = await supabase.rpc('add_credits', {
+            p_user_id: userId,
+            p_amount: orderAmount,
+            p_source: 'payment',
+            p_reference_id: orderId
+          });
           
-          const currentCredits = userData.credit_balance || 0;
-          const newCredits = currentCredits + orderAmount;
-          
-          console.log(`💰 Adding credits: Current=${currentCredits}, Adding=${orderAmount}, New=${newCredits}`);
-          
-          // Update user's credit balance
-          const { error: creditError } = await supabase
-            .from('profiles')
-            .update({ credit_balance: newCredits })
-            .eq('id', userId);
-
-          if (creditError) {
-            console.error('❌ Failed to add credits:', creditError);
+          if (transactionError) {
+            console.error('❌ Failed to add credits:', transactionError);
             throw new ApiError('Failed to add credits to user account', 500);
           }
-
-          // Log the credit transaction
-          const { error: transactionError } = await supabase
-            .from('credit_transactions')
-            .insert({
-              user_id: userId,
-              amount: orderAmount,
-              type: 'credit',
-              source: 'payment',
-              reference_id: orderId,
-              balance_after: newCredits
-            });
-
-          if (transactionError) {
-            console.error('❌ Failed to log credit transaction:', transactionError);
-          }
-
-          console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, new balance: ${newCredits}`);
+          
+          console.log(`✅ Added ₹${orderAmount} credits to user ${userId}, previous balance: ${result.previous_balance}, new balance: ${result.new_balance}`);
         } catch (error) {
           console.error('❌ Error processing credit addition:', error);
           // Don't throw here, we still want to return 200 to Cashfree
