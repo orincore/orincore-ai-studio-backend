@@ -7,7 +7,7 @@ const cashfreeConfig = require('../config/cashfreeConfig');
 // Load Cashfree credentials from config
 const CASHFREE_APP_ID = cashfreeConfig.clientId;
 const CASHFREE_SECRET_KEY = cashfreeConfig.clientSecret;
-const CASHFREE_API_URL = 'https://sandbox.cashfree.com/pg/orders';  // Orders endpoint
+const CASHFREE_API_URL = 'https://api.cashfree.com/pg';  // Orders endpoint
 
 const createCashfreeOrder = async (userId, email, amount, phone) => {
   try {
@@ -51,7 +51,7 @@ const createCashfreeOrder = async (userId, email, amount, phone) => {
         order_status: response.data.order_status,
         payment_session_id: response.data.payment_session_id,
         payment_link: response.data.payment_link,
-        session_url: `https://sandbox.cashfree.com/pg/view/${response.data.payment_session_id}`
+        session_url: `https://api.cashfree.com/pg/view/${response.data.payment_session_id}`
       };
     } else {
       console.error('Invalid response from Cashfree:', JSON.stringify(response.data));
