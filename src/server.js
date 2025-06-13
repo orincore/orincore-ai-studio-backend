@@ -3,9 +3,8 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const bodyParser = require('body-parser');  // ✅ required for raw parsing
+const bodyParser = require('body-parser');  
 const { errorHandler } = require('./middlewares/errorMiddleware');
-const paymentRoutes = require('./routes/paymentRoutes');  // ✅ add this at top
 
 
 // Load environment variables
@@ -21,6 +20,8 @@ const thumbnailRoutes = require('./routes/thumbnailRoutes');
 const posterRoutes = require('./routes/posterRoutes');
 const logoRoutes = require('./routes/logoRoutes');
 const planRoutes = require('./routes/planRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');  
+
 
 // Initialize express app
 const app = express();
@@ -82,6 +83,7 @@ app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/posters', posterRoutes);
 app.use('/api/logos', logoRoutes);
 app.use('/api/plans', planRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -114,8 +116,6 @@ app.listen(PORT, () => {
   - GET /api/logos/styles
   - GET /api/logos/color-themes`);
 });
-
-app.use('/api/payment', paymentRoutes);  // ✅ add this to your routes
 
 
 // Unhandled promise rejections

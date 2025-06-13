@@ -3,6 +3,6 @@ const router = express.Router();
 const paymentController = require('../controllers/paymentController');
 const { protect } = require('../middlewares/authMiddleware'); // <-- use your existing auth middleware
 
-router.post('/create-order', protect, paymentController.createOrder);
+router.post('/create-order', protect, paymentController.createCashfreeOrder);
 
 module.exports = router;
