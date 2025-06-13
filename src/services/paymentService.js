@@ -7,7 +7,7 @@ const cashfreeConfig = require('../config/cashfreeConfig');
 // Load Cashfree credentials from config
 const CASHFREE_APP_ID = cashfreeConfig.clientId;
 const CASHFREE_SECRET_KEY = cashfreeConfig.clientSecret;
-const CASHFREE_API_URL = 'https://api.cashfree.com/pg';  // Orders endpoint
+const CASHFREE_API_URL = 'https://api.cashfree.com/pg/orders';  
 
 const createCashfreeOrder = async (userId, email, amount, phone) => {
   try {
