@@ -33,23 +33,28 @@ app.use('/api/webhooks/cashfree', bodyParser.raw({ type: '*/*' }));
 
 // Security middleware
 app.use(helmet());
-app.use(cors({
+// Configure CORS
+const corsOptions = {
   origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://studio.orincore.com'
+      'https://studio.orincore.com',
+      'https://studioapi.orincore.com'
     ];
-    if (!origin || process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    if (allowedOrigins.includes(origin)) {
+
+    if (process.env.NODE_ENV === 'development' || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -61,12 +66,17 @@ app.use(cors({
     'Accept-Language',
     'x-api-version',
     'x-client-id',
-    'x-client-secret'
+    'x-client-secret',
+    'x-cf-signature'
   ],
-  exposedHeaders: ['Content-Length', 'Content-Type'],
+  exposedHeaders: ['Content-Length', 'Content-Type', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
   credentials: true,
-  maxAge: 86400
-}));
+  maxAge: 86400,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -92,14 +102,22 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/images', imageRoutes);
-app.use('/api/webhooks', webhookRoutes);  // 👈 cashfree webhook will be handled inside webhookRoutes
+app.use('/api/webhooks', webhookRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/posters', posterRoutes);
 app.use('/api/logos', logoRoutes);
 app.use('/api/plans', planRoutes);
-app.use('/api/payments', paymentRoutes);  // Changed to plural for consistency
-app.use('/api/payments', paymentStatusRoutes);  // Payment success/failure handling
+app.use('/api/payments', [paymentRoutes, paymentStatusRoutes]); // Combine payment routes
+
+// Add CORS debug endpoint
+app.get('/api/debug/cors', (req, res) => {
+  res.json({
+    origin: req.get('origin'),
+    method: req.method,
+    headers: req.headers
+  });
+});  // Payment success/failure handling
 
 // Health check endpoint
 app.get('/health', (req, res) => {
