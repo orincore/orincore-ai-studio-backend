@@ -6,7 +6,6 @@ const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');  
 const { errorHandler } = require('./middlewares/errorMiddleware');
 
-
 // Load environment variables
 dotenv.config();
 
@@ -23,24 +22,23 @@ const planRoutes = require('./routes/planRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const paymentStatusRoutes = require('./routes/paymentStatusRoutes');
 
-
 // Initialize express app
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ✅ Apply raw body parser only for Cashfree Webhook BEFORE express.json()
-app.use('/api/webhooks/cashfree', bodyParser.raw({ type: '*/*' }));
+app.use('/api/webhooks/cashfree', bodyParser.raw({ type: 'application/json' }));
 
 // Security middleware
 app.use(helmet());
+
 // Configure CORS
 const corsOptions = {
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, postman)
     if (!origin) {
       return callback(null, true);
     }
-    
+
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
@@ -67,7 +65,7 @@ const corsOptions = {
     'x-api-version',
     'x-client-id',
     'x-client-secret',
-    'x-cf-signature'
+    'x-cf-webhook-signature'  
   ],
   exposedHeaders: ['Content-Length', 'Content-Type', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
   credentials: true,
@@ -98,7 +96,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
+// ✅ Correct way to mount routes:
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/images', imageRoutes);
@@ -108,16 +106,17 @@ app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/posters', posterRoutes);
 app.use('/api/logos', logoRoutes);
 app.use('/api/plans', planRoutes);
-app.use('/api/payments', [paymentRoutes, paymentStatusRoutes]); // Combine payment routes
+app.use('/api/payments', paymentRoutes);  // mount separately
+app.use('/api/payment-status', paymentStatusRoutes); // mount separately
 
-// Add CORS debug endpoint
+// CORS debug endpoint
 app.get('/api/debug/cors', (req, res) => {
   res.json({
     origin: req.get('origin'),
     method: req.method,
     headers: req.headers
   });
-});  // Payment success/failure handling
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -150,7 +149,6 @@ app.listen(PORT, () => {
   - GET /api/logos/styles
   - GET /api/logos/color-themes`);
 });
-
 
 // Unhandled promise rejections
 process.on('unhandledRejection', (err) => {
