@@ -5,6 +5,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');  // ✅ required for raw parsing
 const { errorHandler } = require('./middlewares/errorMiddleware');
+const paymentRoutes = require('./routes/paymentRoutes');  // ✅ add this at top
+
 
 // Load environment variables
 dotenv.config();
@@ -112,6 +114,9 @@ app.listen(PORT, () => {
   - GET /api/logos/styles
   - GET /api/logos/color-themes`);
 });
+
+app.use('/api/payment', paymentRoutes);  // ✅ add this to your routes
+
 
 // Unhandled promise rejections
 process.on('unhandledRejection', (err) => {
