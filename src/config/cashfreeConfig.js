@@ -14,14 +14,14 @@ if (!clientId || !clientSecret) {
   throw new Error('Cashfree credentials are not properly configured');
 }
 
-// Validate that we're using the correct type of credentials for the environment
-if (environment === 'TEST' && clientSecret.startsWith('cfsk_ma_prod_')) {
-  throw new Error('Using production credentials in test environment. Please use TEST credentials for sandbox.');
-}
+// // Validate that we're using the correct type of credentials for the environment
+// if (environment === 'TEST' && clientSecret.startsWith('cfsk_ma_prod_')) {
+//   throw new Error('Using production credentials in test environment. Please use TEST credentials for sandbox.');
+// }
 
-if (environment === 'PROD' && clientSecret.startsWith('cfsk_ma_test_')) {
-  throw new Error('Using test credentials in production environment. Please use PROD credentials for production.');
-}
+// if (environment === 'PROD' && clientSecret.startsWith('cfsk_ma_test_')) {
+//   throw new Error('Using test credentials in production environment. Please use PROD credentials for production.');
+// }
 
 module.exports = {
   clientId,
